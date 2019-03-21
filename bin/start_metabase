@@ -1,0 +1,16 @@
+#!/bin/bash
+
+export METABASE_HOME="${METABASE_HOME:-../metabase}"
+
+cd "$METABASE_HOME"
+
+lein change :profiles dissoc :repl
+
+lein update-in :dependencies into \
+     '[[nrepl "0.6.0"]
+       [com.datomic/datomic-free "0.9.5697"
+        :exclusions  [org.slf4j/jcl-over-slf4j org.slf4j/jul-to-slf4j org.slf4j/log4j-over-slf4j org.slf4j/slf4j-nop]]]' -- \
+     update-in :plugins into \
+     '[[refactor-nrepl "2.4.0"]
+       [cider/cider-nrepl "0.21.2-SNAPSHOT"]]' -- \
+     repl :headless :port 4444

@@ -1,14 +1,9 @@
 (defproject metabase/datomic-driver "1.0.0-SNAPSHOT-0.9.5697"
   :min-lein-version "2.5.0"
 
-  :dependencies
-  [#_[com.datomic/datomic-pro "0.9.5561.62" :exclusions [org.slf4j/slf4j-nop]]
-   [org.clojure/clojure "1.10.0"]
-   [com.datomic/datomic-free "0.9.5697"
-    :exclusions [org.slf4j/jcl-over-slf4j
-                 org.slf4j/jul-to-slf4j
-                 org.slf4j/log4j-over-slf4j
-                 org.slf4j/slf4j-nop]]]
+  :plugins [[lein-tools-deps "0.4.3"]]
+  :middleware [lein-tools-deps.plugin/resolve-dependencies-with-deps-edn]
+  :lein-tools-deps/config {:config-files [:project]}
 
   :profiles
   {:provided

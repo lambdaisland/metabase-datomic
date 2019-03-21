@@ -1,8 +1,23 @@
 {:paths ["src" "test" "resources"]
- :deps {org.clojure/clojure {:mvn/version "1.10.0"}}
+ :deps  {org.clojure/clojure {:mvn/version "1.10.0"}}
  :aliases
  {:dev
-  {}
+  {:extra-paths ["dev"]
+   :extra-deps  {metabase-core {:local/root "../metabase"}}}
+
+  :datomic-free
+  {:extra-deps {com.datomic/datomic-free {:mvn/version "0.9.5697"
+                                          :exclusions  [org.slf4j/jcl-over-slf4j
+                                                        org.slf4j/jul-to-slf4j
+                                                        org.slf4j/log4j-over-slf4j
+                                                        org.slf4j/slf4j-nop]}}}
+
+  :datomic-pro
+  {:extra-deps {com.datomic/datomic-pro {:mvn/version "0.9.5561.62"
+                                         :exclusions  [org.slf4j/jcl-over-slf4j
+                                                       org.slf4j/jul-to-slf4j
+                                                       org.slf4j/log4j-over-slf4j
+                                                       org.slf4j/slf4j-nop]}}}
 
   :test
   {:extra-deps {lambdaisland/kaocha {:mvn/version "0.0-409"}}}}}

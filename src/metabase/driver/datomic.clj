@@ -105,7 +105,7 @@
 
 (defmethod driver/mbql->native :datomic [_ {{source-table-id :source-table} :query, :as mbql-query}]
   (println "mbql-query:" mbql-query)
-  (let [{:keys [source-table fields limit] (:query mbql-query)}]
+  (let [{:keys [source-table fields limit]} (:query mbql-query)]
     )
 
   {:query '{:find [(pull ?e :*)]
