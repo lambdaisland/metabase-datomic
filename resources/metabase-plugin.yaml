@@ -1,0 +1,16 @@
+info:
+  name: Metabase Datomic Driver
+  version: 1.0.0-SNAPSHOT-0.9.5697
+  description: Allows Metabase to connect to Datomic databases.
+driver:
+  name: datomic
+  display-name: Datomic
+  lazy-load: true
+  connection-properties:
+    - name: db
+      display-name: URL
+      placeholder: datomic:mem://metabase_dev
+      required: true
+init:
+  - step: load-namespace
+    namespace: metabase.driver.datomic
