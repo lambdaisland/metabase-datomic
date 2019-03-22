@@ -23,10 +23,11 @@
 (defn open-metabase []
   ((jit clojure.java.browse/browse-url) "http://localhost:3000"))
 
+(defn initial-setup! []
+  ((jit user.setup/setup-all)))
 
 (comment
   (start-metabase!)
   (open-metabase)
 
-  ((jit user.setup/setup-all))
   )

@@ -1,7 +1,9 @@
 {:paths ["src" "test" "resources"]
- :deps  {org.clojure/clojure {:mvn/version "1.10.0"}}
+ :deps  {org.clojure/clojure {:mvn/version "1.10.0"}
+         metabase-core {:mvn/version "1.0.0-SNAPSHOT"
+                        :scope "provided"}}
  :aliases
- {:dev
+ {#_#_:dev
   {:extra-paths ["dev"]
    :extra-deps  {metabase-core {:local/root "../metabase"}}}
 

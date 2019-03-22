@@ -1,0 +1,3 @@
+#!/bin/bash
+
+emacsclient -e '(load "'`pwd`'/bin/cider_connect.el")'
