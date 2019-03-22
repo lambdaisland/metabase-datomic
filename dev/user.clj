@@ -1,7 +1,4 @@
-(ns user
-  (:require [clojure.java.io :as io]))
-
-(def paths ["src" "dev" "test" "resources"])
+(ns user)
 
 (defmacro jit
   "Just in time loading of dependencies."
@@ -10,30 +7,26 @@
      (require '~(symbol (namespace sym)))
      (find-var '~sym)))
 
-(defn add-classpaths []
-  (doseq [cp paths]
-    ((jit metabase.plugins.classloader/add-url-to-classpath!)
-     (.toURL
-      (.toURI
-       (io/file (str "../metabase-datomic/" cp)))))))
+(defn setup-driver! []
+  ((jit metabase.plugins.initialize/init-plugin-with-info!)
+   ((jit yaml.core/from-file)
+    ((jit clojure.java.io/file) "../metabase-datomic/resources/metabase-plugin.yaml"))))
 
 (defn start-metabase! []
   (let [start-web-server! (jit metabase.server/start-web-server!)
         app               (jit metabase.handler/app)
         init!             (jit metabase.core/init!)]
     (start-web-server! app)
-    (init!)))
+    (init!)
+    (setup-driver!)))
 
 (defn open-metabase []
   ((jit clojure.java.browse/browse-url) "http://localhost:3000"))
 
-(comment
-  (add-classpaths)
 
-  (require 'metabase.driver.datomic)
+(comment
   (start-metabase!)
   (open-metabase)
 
   ((jit user.setup/setup-all))
-
   )

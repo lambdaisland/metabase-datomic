@@ -5,7 +5,7 @@
             [metabase.models.database :as database :refer [Database]]
             [metabase.public-settings :as public-settings]
             [clojure.java.io :as io]
-            [yaml.core :as yaml]))
+            ))
 
 (defn setup-first-user []
   (let [new-user (db/insert! User
@@ -21,11 +21,6 @@
   (public-settings/admin-email "arne@example.com")
   (public-settings/anon-tracking-enabled false)
   (setup/clear-token!))
-
-(defn setup-driver []
-  (metabase.plugins.initialize/init-plugin-with-info!
-   (yaml/from-file
-    (io/file "../metabase-datomic/resources/metabase-plugin.yaml"))))
 
 (defn setup-database []
   (db/insert! Database

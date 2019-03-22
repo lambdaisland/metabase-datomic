@@ -1,10 +1,25 @@
 #!/bin/bash
 
+# This script expects Metabase and Metabase-datomic to be checked out in two
+# sibling directories named "metabase" and "metabase-datomic". Run this script
+# from the latter as bin/start_datomic.
+#
+# Alternatively you can set METABASE_HOME and METABASE_DATOMIC_HOME before
+# invoking the script.
+
 export METABASE_HOME="${METABASE_HOME:-../metabase}"
+export METABASE_DATOMIC_HOME="${METABASE_DATOMIC_HOME:-`pwd`}"
 
 cd "$METABASE_HOME"
 
-lein change :profiles dissoc :repl
+# Delete the :repl profile to stop metabase from loading all drivers
+if grep -q ':repl$' project.clj ;
+then
+    echo -e "/:repl$/\n.,+2d\nwq" | ed project.clj
+fi
+
+# Slower way to do the same thing
+# lein change :profiles dissoc :repl
 
 lein update-in :dependencies into \
      '[[nrepl "0.6.0"]
@@ -13,4 +28,6 @@ lein update-in :dependencies into \
      update-in :plugins into \
      '[[refactor-nrepl "2.4.0"]
        [cider/cider-nrepl "0.21.2-SNAPSHOT"]]' -- \
+     update-in :source-paths into '["'"${METABASE_DATOMIC_HOME}"/dev'" "'"${METABASE_DATOMIC_HOME}"/test'" "'"${METABASE_DATOMIC_HOME}"/src'"]' -- \
+     update-in :resource-paths conj '"'"${METABASE_DATOMIC_HOME}"/resources'"' -- \
      repl :headless :port 4444

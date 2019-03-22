@@ -1,8 +1,12 @@
 (ns metabase.driver.datomic
   (:require [metabase.driver :as driver]
+            [metabase.driver.datomic.query-processor :as datomic.qp]
             [metabase.query-processor :as qp]
             [metabase.query-processor.store :as qp.store]
-            [datomic.api :as d]))
+            [datomic.api :as d]
+            [clojure.string :as str]))
+
+(require 'metabase.driver.datomic.monkey-patch)
 
 (driver/register! :datomic)
 
@@ -50,7 +54,7 @@
               '[?b :db/ident ?c]
               '[?b :db/valueType ?t]
               '[?t :db/ident ?tt]
-              ]}
+              '[(not= ?c :db/ident)]]}
      db)))
 
 #_
@@ -97,41 +101,78 @@
                    (for [[col type] cols]
                      {:name          (kw->str col)
                       :database-type (kw->str type)
+                      :display-name  (str/capitalize (kw->str col))
                       :base-type     (datomic->metabase-type type)}))}))
 
 #_
 (driver/describe-table :datomic {:details {:db "datomic:free://localhost:4334/mbrainz"}}
                        {:name "artist"})
 
-(defmethod driver/mbql->native :datomic [_ {{source-table-id :source-table} :query, :as mbql-query}]
-  (println "mbql-query:" mbql-query)
-  (let [{:keys [source-table fields limit]} (:query mbql-query)]
-    )
 
-  {:query '{:find [(pull ?e :*)]
-            :where [[?e :artist/name]]}})
+(defmethod driver/mbql->native :datomic [_ {:keys [database query] :as mbql-query}]
+  (let [{:keys [source-table fields limit]} query
 
-(defmethod driver/execute-query :datomic [_ {{query :query} :native, :as native-query}]
-  (println "native-query:" native-query)
-  {:columns ["id", "name"]
-   :rows    [[1 "Lucky Bird"]
-             [2 "Rasta Can"]]}
-  )
+        uri     (get-in (qp.store/database) [:details :db])
+        conn    (d/connect uri)
+        db      (d/db conn)
+        table   (qp.store/table source-table)
+        columns (map first (table-columns db (:name table)))
+        fields  (mapv (comp keyword
+                            :name
+                            (fn [[_ f]] (qp.store/field f)))
+                      fields)]
+    {:db db
+     :query {:find  [(list 'pull '?e fields)]
+             :where [`(~'or ~@(map #(vector '?e %) columns))]}}))
+
+(defmethod driver/execute-query :datomic [_ {:keys [native query] :as native-query}]
+  (let [{:keys [source-table fields limit]} query
+
+        db      (:db native)
+        table   (qp.store/table source-table)
+        columns (map first (table-columns db (:name table)))
+        fields  (mapv (comp keyword
+                            :name
+                            (fn [[_ f]] (qp.store/field f)))
+                      fields)
+        results (d/q (:query native) db)]
+
+    {:columns columns
+     :rows    (map #(select-keys (first %) fields) results)} ))
 
 
 (comment
+  (d/q (:query (qp/query->native +q+)) (db))
+
+  (table-columns (db) "country")
+
+  (qp/process-query +q+)
+
+  (def +q+
+    {:database 3,
+     :type :query,
+     :query
+     {:source-table 10,
+      :fields
+      [[:field-id 80] [:field-id 81] [:field-id 82] [:field-id 83] [:field-id 84]],
+      :limit 10000},
+     :middleware {:format-rows? false, :skip-results-metadata? true},
+     :driver :datomic,
+     :settings {}})
+
+
 
   (qp/query->native
-   {:database 2,
-    :type :query,
-    :query
-    {:source-table 10,
-     :fields
-     [[:field-id 80] [:field-id 81] [:field-id 82] [:field-id 83] [:field-id 84]],
-     :limit 10000},
-    :middleware {:format-rows? false, :skip-results-metadata? true},
-    :driver :datomic,
-    :settings {}})
+    {:database 2,
+     :type :query,
+     :query
+     {:source-table 10,
+      :fields
+      [[:field-id 80] [:field-id 81] [:field-id 82] [:field-id 83] [:field-id 84]],
+      :limit 10000},
+     :middleware {:format-rows? false, :skip-results-metadata? true},
+     :driver :datomic,
+     :settings {}})
 
   (qp.store/database)
   (qp.store/table 10)
