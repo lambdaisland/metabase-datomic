@@ -35,5 +35,4 @@
 (defn setup-all []
   (setup-first-user)
   (setup-site)
-  (setup-driver)
   (setup-database))

@@ -9,6 +9,9 @@
   {:provided
    {:dependencies [[metabase-core "1.0.0-SNAPSHOT"]]}
 
+   :datomic-free {:lein-tools-deps/config { :aliases [:datomic-free]}}
+   :datomic-pro {:lein-tools-deps/config { :aliases [:datomic-pro]}}
+
    :uberjar
    {:auto-clean    true
     :aot           :all

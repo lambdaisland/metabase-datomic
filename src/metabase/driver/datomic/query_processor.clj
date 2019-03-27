@@ -1,64 +1,60 @@
-(ns metabase.driver.datomic.query-processor)
+(ns metabase.driver.datomic.query-processor
+  (:require [metabase.driver :as driver]
+            [metabase.query-processor :as qp]
+            [metabase.query-processor.store :as qp.store]
+            [datomic.api :as d]
+            [clojure.string :as str]))
 
+(defn attributes
+  "Query db for all attribute entities."
+  [db]
+  (->> db
+       (d/q '{:find [[?eid ...]] :where [[?eid :db/valueType]]})
+       (map (partial d/entity db))))
 
-;; native
-'{:database 3,
-  :type :query,
-  :query
-  {:source-table 8,
-   :fields
-   [[:field-id 72]
-    [:field-id 66]
-    [:field-id 76]
-    [:field-id 67]
-    [:field-id 70]
-    [:field-id 74]
-    [:field-id 65]
-    [:field-id 69]
-    [:field-id 73]
-    [:field-id 75]
-    [:field-id 68]
-    [:field-id 64]
-    [:field-id 71]],
-   :limit 2000},
-  :constraints {:max-results 10000, :max-results-bare-rows 2000},
-  :info
-  {:executed-by 1,
-   :context :ad-hoc,
-   :nested? false,
-   :query-hash "#object[[B 0x8a8c1c1 [B@8a8c1c1]",
-   :query-type MBQL},
-  :results-promise "#promise[{:status :pending, :val nil} 0x1d8c6198]",
-  :driver :datomic,
-  :settings {}}
+(defn attrs-by-table [db]
+  (reduce #(update %1 (namespace (:db/ident %2)) conj %2)
+          {}
+          (attributes db)))
 
-;; MBQL
-'{:database 3,
-  :type :query,
-  :query
-  {:source-table 8,
-   :fields
-   [[:field-id 72]
-    [:field-id 66]
-    [:field-id 76]
-    [:field-id 67]
-    [:field-id 70]
-    [:field-id 74]
-    [:field-id 65]
-    [:field-id 69]
-    [:field-id 73]
-    [:field-id 75]
-    [:field-id 68]
-    [:field-id 64]
-    [:field-id 71]],
-   :limit 2000},
-  :constraints {:max-results 10000, :max-results-bare-rows 2000},
-  :info
-  {:executed-by 1,
-   :context :ad-hoc,
-   :nested? false,
-   :query-hash "#object[[B 0x8a8c1c1 [B@8a8c1c1]",
-   :query-type MBQL},
-  :driver :datomic,
-  :settings {},
-  :native {:query {:find [(pull ?e :*)], :where [[?e :artist/name]]}}}
+(defn derive-table-names
+  "Find all \"tables\" i.e. all namespace prefixes used in attribute names."
+  [db]
+  (remove #{"fressian" "db" "db.alter" "db.excise" "db.install" "db.sys"}
+          (keys (attrs-by-table db))))
+
+(defn table-columns
+  "Given the name of a \"table\" (attribute namespace prefix), find all attribute
+  names that occur in entities that have an attribute with this prefix."
+  [db table]
+  (let [attrs (get (attrs-by-table db) table)]
+    (-> #{}
+        (into (map (juxt :db/ident :db/valueType))
+              attrs)
+        (into (d/q
+               {:find '[?ident ?type]
+                :where [(cons 'or
+                              (for [attr attrs]
+                                ['?eid (:db/ident attr)]))
+                        '[?eid ?attr]
+                        '[?attr :db/ident ?ident]
+                        '[?attr :db/valueType ?type-id]
+                        '[?type-id :db/ident ?type]
+                        '[(not= ?ident :db/ident)]]}
+               db)))))
+
+(defn mbql->native [{:keys [database query] :as mbql-query}]
+  (let [{:keys [source-table fields limit]} query
+
+        uri     (get-in (qp.store/database) [:details :db])
+        conn    (d/connect uri)
+        db      (d/db conn)
+        table   (qp.store/table source-table)
+        columns (map first (table-columns db (:name table)))
+        fields  (mapv (comp keyword
+                            :name
+                            (fn [[_ f]] (qp.store/field f)))
+                      fields)]
+    {:db db
+     :query {:find  [(list 'pull '?e fields)]
+             :where [`(~'or ~@(map #(vector '?e %) columns))]}}))

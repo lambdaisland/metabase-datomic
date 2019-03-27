@@ -20,7 +20,8 @@ attribute in any such matching entity is considered a column of said table.
 
 ## Developing
 
-To get a REPL based workflow, do a git clone of both `metabase` and `metabase-datomic`, such that they are in sibling directories
+To get a REPL based workflow, do a git clone of both `metabase` and
+`metabase-datomic`, such that they are in sibling directories
 
 ```
 .
@@ -32,7 +33,7 @@ To get a REPL based workflow, do a git clone of both `metabase` and `metabase-da
 Before you can use Metabase you need to build the frontend. This step you only
 need to do once.
 
-```
+``` shell
 cd metabase
 yarn build
 ```
@@ -40,7 +41,7 @@ yarn build
 Now `cd` into the `metabase-datomic` directory, and run `bin/start_metabase` to
 lauch the process including nREPL running on port 4444.
 
-```
+``` shell
 cd metabase-datomic
 bin/start_metabase
 ```
@@ -50,35 +51,32 @@ Now you can connect from Emacs/CIDER to port 4444, or use the
 session with both projects, so you can easily evaluate code in either, and
 navigate back and forth.
 
-Once you have a REPL you can start the web app.
+Once you have a REPL you can start the web app. This also opens a browser at
+`localhost:3000`
 
 ``` clojure
-user=> (start-metabase!)
-```
-
-And open it in the browser at `localhost:3000`
-
-``` clojure
-user=> (open-metabase)
+user=> (go)
 ```
 
 The first time it will ask you to create a user and do some other initial setup.
-To skip this step, invoke `initial-setup!`. This will create a user with
-username `arne@example.com` and password `dev`. It will also create a Datomic
-database with URL `datomic:free://localhost:4334/mbrainz`. You are encouraged to
-run a datomic-free transactor, and import the MusicBrainz database for testing.
+To skip this step, invoke `setup!`. This will create a user with username
+`arne@example.com` and password `dev`. It will also create a Datomic database
+with URL `datomic:free://localhost:4334/mbrainz`. You are encouraged to run a
+datomic-free transactor, and
+[import the MusicBrainz](https://github.com/Datomic/mbrainz-sample)
+database for testing.
 
-```
-user=> (initial-setup!)
+``` clojure
+user=> (setup!)
 ```
 
 ## Installing
 
-Run `lein jar` and copy the result into your Metabase `plugins/` directory.
+Run `lein uberjar` and copy the result into your Metabase `plugins/` directory.
 
 ```
 cd metabase-datomic
-lein jar
+lein uberjar
 cp target/*.jar ../metabase/plugins
 
 cd ../metabase-datomic
