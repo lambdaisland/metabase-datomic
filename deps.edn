@@ -1,11 +1,14 @@
-{:paths ["src" "test" "resources"]
+{:paths ["src"
+         "test"
+         "../metabase-datomic/src"
+         "../metabase-datomic/test"
+         "../metabase-datomic/resources"]
  :deps  {org.clojure/clojure {:mvn/version "1.10.0"}
          metabase-core {:mvn/version "1.0.0-SNAPSHOT"
                         :scope "provided"}}
  :aliases
- {#_#_:dev
-  {:extra-paths ["dev"]
-   :extra-deps  {metabase-core {:local/root "../metabase"}}}
+ {:dev
+  {:extra-paths ["../metabase-datomic/dev"]}
 
   :datomic-free
   {:extra-deps {com.datomic/datomic-free {:mvn/version "0.9.5697"
@@ -22,4 +25,7 @@
                                                        org.slf4j/slf4j-nop]}}}
 
   :test
-  {:extra-deps {lambdaisland/kaocha {:mvn/version "0.0-409"}}}}}
+  {:extra-paths ["../metabase/test"]
+   :extra-deps {lambdaisland/kaocha {:mvn/version "0.0-409"}
+                metabase-core {:mvn/version "1.0.0-SNAPSHOT"}
+                expectations {:mvn/version "2.2.0-beta2"}}}}}

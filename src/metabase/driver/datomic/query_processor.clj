@@ -56,5 +56,8 @@
                             (fn [[_ f]] (qp.store/field f)))
                       fields)]
     {:db db
-     :query {:find  [(list 'pull '?e fields)]
-             :where [`(~'or ~@(map #(vector '?e %) columns))]}}))
+     :query
+     (with-out-str
+       (clojure.pprint/pprint
+        {:find  [(list 'pull '?e fields)]
+         :where [`(~'or ~@(map #(vector '?e %) columns))]}))}))

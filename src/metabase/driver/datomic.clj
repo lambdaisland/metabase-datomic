@@ -47,8 +47,7 @@
 (defn kw->str [s]
   (str (namespace s) "/" (name s)))
 
-(defmethod driver/describe-table :datomic [_ instance {table-name :name}]
-  (println "Describing" table-name)
+(defn describe-table [instance {table-name :name}]
   (let [url  (get-in instance [:details :db])
         db   (d/db (d/connect url))
         cols (datomic.qp/table-columns db table-name)]
@@ -61,12 +60,10 @@
                    (for [[col type] cols]
                      {:name          (kw->str col)
                       :database-type (kw->str type)
-                      :display-name  (str/capitalize (kw->str col))
                       :base-type     (datomic->metabase-type type)}))}))
 
-#_
-(driver/describe-table :datomic {:details {:db "datomic:free://localhost:4334/mbrainz"}}
-                       {:name "artist"})
+(defmethod driver/describe-table :datomic [_ instance table]
+  (describe-table instance table))
 
 (defonce mbql-history (atom ()))
 (defonce query-history (atom ()))
@@ -86,7 +83,8 @@
                             :name
                             (fn [[_ f]] (qp.store/field f)))
                       fields)
-        results (d/q (:query native) db)]
+        datalog (read-string (:query native))
+        results (d/q datalog db)]
 
     {:columns columns
      :rows    (map #(select-keys (first %) fields) results)} ))

@@ -1,4 +1,5 @@
-(ns user)
+(ns user
+  (:require [clojure.java.io :as io]))
 
 (defmacro jit
   "Just in time loading of dependencies."
@@ -8,8 +9,8 @@
      (find-var '~sym)))
 
 (defn setup-driver! []
-  (-> "../metabase-datomic/resources/metabase-plugin.yaml"
-      ((jit clojure.java.io/file))
+  (-> (io/resource "metabase-plugin.yaml")
+      io/file
       ((jit yaml.core/from-file))
       ((jit metabase.plugins.initialize/init-plugin-with-info!))))
 

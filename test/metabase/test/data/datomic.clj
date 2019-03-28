@@ -39,10 +39,12 @@
 
 (defmethod tx/create-db! :datomic
   [_ {:keys [table-definitions] :as dbdef} & {:keys [skip-drop-db?] :as opts}]
+  (println "Creating database!")
   (let [url (db-url dbdef)]
     (when-not skip-drop-db?
       (d/delete-database url))
-    (d/create-database url)
+    (println (d/create-database url))
+
     (let [conn   (d/connect url)
           schema (mapcat table->attributes table-definitions)
           data   (mapcat table->entities table-definitions)]

@@ -28,7 +28,8 @@ lein update-in :dependencies into                                               
                       org.slf4j/jul-to-slf4j
                       org.slf4j/log4j-over-slf4j
                       org.slf4j/slf4j-nop]]
-       [vvvvalvalval/scope-capture "0.3.2"]]' --                                  \
+       [vvvvalvalval/scope-capture "0.3.2"]
+       [lambdaisland/kaocha "0.0-409"]]' --                                  \
      update-in :plugins into                                                      \
      '[[refactor-nrepl "2.4.0"]
        [cider/cider-nrepl "0.21.2-SNAPSHOT"]]' --                                 \
