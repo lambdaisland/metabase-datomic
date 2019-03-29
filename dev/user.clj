@@ -38,6 +38,7 @@
 
 (defn refer-repl []
   (require '[user.repl :refer :all]
+           '[user.setup :refer :all]
            '[user :refer :all]
            '[clojure.repl :refer :all]
            '[sc.api :refer :all]))

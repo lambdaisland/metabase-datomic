@@ -6,6 +6,8 @@
 ;; causes some of Datomic's internal cache structures to throw an exception.
 ;; https://github.com/metabase/toucan/issues/55
 
+;; We can drop this as soon as Metabase has upgraded to Toucan 1.12.0
+
 (defn- require-model-namespaces-and-find-hydration-fns []
   (reduce
    (fn [coll ns]

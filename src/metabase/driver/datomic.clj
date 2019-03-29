@@ -57,7 +57,9 @@
                       :database-type "db.type/ref"
                       :base-type     :type/Integer
                       :pk?           true}}
-                   (for [[col type] cols]
+                   (for [[col type] cols
+                         ;; Ignore "foreign keys" for now
+                         :when (not (= :db.type/ref type))]
                      {:name          (kw->str col)
                       :database-type (kw->str type)
                       :base-type     (datomic->metabase-type type)}))}))
