@@ -18,11 +18,17 @@
   ([url]
    (datomic.api/db (conn url))))
 
+(defn mbql-history []
+  @metabase.driver.datomic/mbql-history)
+
+(defn query-history []
+  @metabase.driver.datomic/query-history)
+
 (defn qry
   ([]
-   (first @metabase.driver.datomic/mbql-history))
+   (first (mbql-history)))
   ([n]
-   (nth @metabase.driver.datomic/mbql-history n)))
+   (nth (mbql-history) n)))
 
 (defn query->native [q]
   (metabase.query-processor/query->native q))

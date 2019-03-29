@@ -10,7 +10,7 @@
 
 (driver/register! :datomic)
 
-(defmethod driver/supports? [:datomic :basic-aggregations] [_ _] false)
+(defmethod driver/supports? [:datomic :basic-aggregations] [_ _] true)
 
 (defmethod driver/can-connect? :datomic [_ {db :db}]
   (try
@@ -74,22 +74,10 @@
   (swap! mbql-history conj query)
   (datomic.qp/mbql->native query))
 
-(defmethod driver/execute-query :datomic [_ {:keys [native query] :as native-query}]
+(defmethod driver/execute-query :datomic [_ native-query]
   (swap! query-history conj native-query)
-  (let [{:keys [source-table fields limit]} query
-
-        db      (:db native)
-        table   (qp.store/table source-table)
-        columns (map first (datomic.qp/table-columns db (:name table)))
-        fields  (mapv (comp keyword
-                            :name
-                            (fn [[_ f]] (qp.store/field f)))
-                      fields)
-        datalog (read-string (:query native))
-        results (d/q datalog db)]
-
-    {:columns columns
-     :rows    (map #(select-keys (first %) fields) results)} ))
+  (datomic.qp/execute-query native-query)
+  )
 
 (comment
   (driver/describe-table :datomic {:details {:db "datomic:mem:sample-data"}}
