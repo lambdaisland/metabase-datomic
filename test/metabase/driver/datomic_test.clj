@@ -1,5 +1,5 @@
 (ns metabase.driver.datomic-test
-  (:require [clojure.test :refer :all]
+  (:require [clojure.test :as test :refer [is are testing]]
             [metabase.driver :as driver]
             [metabase.test.data.interface :as tx]
             [metabase.test.data.datomic]
@@ -10,6 +10,13 @@
             [metabase.models.field :refer [Field]]
             [metabase.query-processor :as qp]))
 
+(require 'matcher-combinators.test)
+
+(defmacro deftest [name & body]
+  `(test/deftest ~name
+     (driver/with-driver :datomic
+       ~@body)))
+
 (tx/def-database-definition countries
   [["country"
     [{:field-name "code" :base-type :type/Text}
@@ -17,9 +24,10 @@
     [["BE" "Belgium"]
      ["DE" "Germany"]
      ["FI" "Finnland"]]]])
+#_(remove-database "countries")
 
 (tx/def-database-definition aggr-data
-  [["aggr"
+  [["foo"
     [{:field-name "f1" :base-type :type/Text}
      {:field-name "f2" :base-type :type/Text}]
     [["xxx" "a"] ["xxx" "b"] ["yyy" "c"]]]])
@@ -28,26 +36,24 @@
   (select-keys (:data result) [:columns :rows]))
 
 (deftest basic-query-test
-  (driver/with-driver :datomic
-    (data/with-temp-db [_ countries]
-      (is (= {:columns ["db/id" "country/code" "country/name"],
-              :rows [[17592186045418 "BE" "Belgium"]
-                     [17592186045419 "DE" "Germany"]
-                     [17592186045420 "FI" "Finnland"]]}
-             (rows+cols (data/run-mbql-query country))))))
+  (is (match? {:columns ["db/id" "country/code" "country/name"],
+               :rows    [[pos-int? "BE" "Belgium"]
+                         [pos-int? "DE" "Germany"]
+                         [pos-int? "FI" "Finnland"]]}
+              (rows+cols
+               (data/dataset countries
+                 (data/run-mbql-query country))))))
 
+(deftest aggregrate-count-test
+  (is (match? {:columns ["foo/f1" "count"],
+               :rows    [["xxx" 2] ["yyy" 1]]}
+              (rows+cols
+               (data/dataset aggr-data
+                 (data/run-mbql-query foo
+                   {:aggregation [[:count]]
+                    :breakout    [$f1]}))))))
 
-  )
-
-(driver/with-driver :datomic
-  (data/with-temp-db [_ aggr-data]
-    (data/run-mbql-query aggr
-      {:aggregation [[:count]]
-       :breakout [[:field-id (data/id "aggr" "aggr/f1")]]
-       })))
-
-
-(data/run-mbql-query country)
+#_
 (driver/with-driver :datomic
   (data/with-temp-db [_ aggr-data]
     (qp/query->native

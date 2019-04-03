@@ -1,14 +1,17 @@
-{:paths ["src"
-         "test"
-         "../metabase-datomic/src"
-         "../metabase-datomic/test"
+{:paths ["../metabase-datomic/src"
          "../metabase-datomic/resources"]
- :deps  {org.clojure/clojure {:mvn/version "1.10.0"}
-         metabase-core {:mvn/version "1.0.0-SNAPSHOT"
-                        :scope "provided"}}
+ :deps  {}
+
  :aliases
- {:dev
-  {:extra-paths ["../metabase-datomic/dev"]}
+ {:metabase
+  {:extra-deps {org.clojure/clojure {:mvn/version "1.10.0"}
+                metabase-core       {:mvn/version "1.0.0-SNAPSHOT"
+                                     :scope       "provided"}}}
+
+  :dev
+  {:extra-paths ["../metabase-datomic/dev"]
+   :extra-deps  {nrepl                      {:mvn/version "0.6.0"}
+                 vvvvalvalval/scope-capture {:mvn/version "0.3.2"}}}
 
   :datomic-free
   {:extra-deps {com.datomic/datomic-free {:mvn/version "0.9.5697"
@@ -25,7 +28,8 @@
                                                        org.slf4j/slf4j-nop]}}}
 
   :test
-  {:extra-paths ["../metabase/test"]
-   :extra-deps {lambdaisland/kaocha {:mvn/version "0.0-409"}
-                metabase-core {:mvn/version "1.0.0-SNAPSHOT"}
-                expectations {:mvn/version "2.2.0-beta2"}}}}}
+  {:extra-paths ["../metabase/test"
+                 "../metabase-datomic/test"]
+   :extra-deps  {lambdaisland/kaocha        {:mvn/version "0.0-409"}
+                 expectations               {:mvn/version "2.2.0-beta2"}
+                 nubank/matcher-combinators {:mvn/version "0.8.1"}}}}}

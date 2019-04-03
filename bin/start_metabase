@@ -12,31 +12,32 @@ export METABASE_DATOMIC_HOME="${METABASE_DATOMIC_HOME:-`pwd`}"
 
 cd "$METABASE_HOME"
 
+ln -fs ../metabase-datomic/deps.edn .
+ln -fs ../metabase-datomic/tests.edn .
+
 # Delete the :repl profile to stop metabase from loading all drivers
 if grep -q ':repl$' project.clj ;
 then
-    echo -e "/:repl$/\n.,+2d\nwq" | ed project.clj
+ed project.clj <<-EOF
+H
+/:profiles/
+i
+  :plugins
+  [[refactor-nrepl "2.4.0"]
+   [cider/cider-nrepl "0.21.2-SNAPSHOT"]
+   [lein-tools-deps "0.4.3"]]
+
+  :middleware [lein-tools-deps.plugin/resolve-dependencies-with-deps-edn]
+
+  :lein-tools-deps/config
+  {:config-files [:install :project]
+   :aliases [:dev :test :datomic-free]}
+
+.
+/:repl$/
+.,+2d
+wq
+EOF
 fi
 
-# Slower way to do the same thing
-# lein change :profiles dissoc :repl
-
-lein update-in :dependencies into                                                 \
-     '[[nrepl "0.6.0"]
-       [com.datomic/datomic-free "0.9.5697"
-        :exclusions  [org.slf4j/jcl-over-slf4j
-                      org.slf4j/jul-to-slf4j
-                      org.slf4j/log4j-over-slf4j
-                      org.slf4j/slf4j-nop]]
-       [vvvvalvalval/scope-capture "0.3.2"]
-       [lambdaisland/kaocha "0.0-409"]]' --                                  \
-     update-in :plugins into                                                      \
-     '[[refactor-nrepl "2.4.0"]
-       [cider/cider-nrepl "0.21.2-SNAPSHOT"]]' --                                 \
-           update-in :source-paths into                                           \
-     '["'"${METABASE_DATOMIC_HOME}"/dev'"
-       "'"${METABASE_DATOMIC_HOME}"/test'"
-       "'"${METABASE_DATOMIC_HOME}"/src'"]' --                                    \
-     update-in :resource-paths conj '"'"${METABASE_DATOMIC_HOME}"/resources'"' -- \
-     update-in :repl-options assoc :init-ns user --                               \
-     repl :headless :port 4444
+lein repl :headless :port 4444

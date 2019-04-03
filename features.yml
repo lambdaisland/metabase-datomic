@@ -1,7 +1,12 @@
 - Basics:
     - "{:source-table integer-literal}": Yes
-    - "{:fields [& field]}": Yes
-    - "{:breakout [& concrete-field]}": Yes
+    - "{:fields [& field]}":
+        - "[:field-id field-id]": Yes
+        - "[:datetime-field local-field | fk unit]":
+    - "{:breakout [& concrete-field]}":
+        - "[:field-id field-id]": Yes
+        - "[:aggregation 0]": Yes
+        - "[:datetime-field local-field | fk unit]":
     - "{:filter filter-clause}":
         - "[:and & filter-clause]":
         - "[:or & filter-clause]":
@@ -30,18 +35,27 @@
         - "[:cum-count concrete-field]":
         - "[:cum-sum concrete-field]":
         - "[:distinct concrete-field]":
-        - "[:stddev concrete-field]":
         - "[:sum concrete-field]":
         - "[:min concrete-field]":
         - "[:max concrete-field]":
         - "[:share filter-clause]":
+- :standard-deviation-aggregations:
+    - "{:aggregation aggregation-clause}":
+        - "[:stddev concrete-field]":
 - :foreign-keys:
+    - "{:fields [& field]}":
+        - "[:fk-> fk-field-id dest-field-id]":
 - :nested-fields:
 - :set-timezone:
 - :expressions:
+    - "{:fields [& field]}":
+        - "[:expression]":
+    - "{:breakout [& concrete-field]}":
+        - "[:expression]":
     - "{:expressions {expression-name expression}}":
 - :native-parameters:
 - :expression-aggregations:
 - :nested-queries:
+    - "{:source-query query}":
 - :binning:
 - :case-sensitivity-string-filter-options:

@@ -1,6 +1,7 @@
 (ns metabase.driver.datomic
   (:require [metabase.driver :as driver]
             [metabase.driver.datomic.query-processor :as datomic.qp]
+            [metabase.driver.datomic.util :as util]
             [metabase.query-processor :as qp]
             [metabase.query-processor.store :as qp.store]
             [datomic.api :as d]
@@ -11,6 +12,7 @@
 (driver/register! :datomic)
 
 (defmethod driver/supports? [:datomic :basic-aggregations] [_ _] true)
+(defmethod driver/supports? [:datomic :case-sensitivity-string-filter-options] [_ _] false)
 
 (defmethod driver/can-connect? :datomic [_ {db :db}]
   (try
@@ -44,9 +46,6 @@
    :db.type/bytes   :type/Array} ;; Value type for small binary data. Maps to byte array on Java platforms. See limitations.
   )
 
-(defn kw->str [s]
-  (str (namespace s) "/" (name s)))
-
 (defn describe-table [instance {table-name :name}]
   (let [url  (get-in instance [:details :db])
         db   (d/db (d/connect url))
@@ -59,9 +58,13 @@
                       :pk?           true}}
                    (for [[col type] cols
                          ;; Ignore "foreign keys" for now
-                         :when (not (= :db.type/ref type))]
-                     {:name          (kw->str col)
-                      :database-type (kw->str type)
+                         :when (not (= :db.type/ref type))
+                         :let [col-name (if (= (namespace col)
+                                               table-name)
+                                          (name col)
+                                          (util/kw->str col))]]
+                     {:name          col-name
+                      :database-type (util/kw->str type)
                       :base-type     (datomic->metabase-type type)}))}))
 
 (defmethod driver/describe-table :datomic [_ instance table]

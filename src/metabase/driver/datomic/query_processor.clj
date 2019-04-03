@@ -5,7 +5,8 @@
             [metabase.models.field :as field :refer [Field]]
             [datomic.api :as d]
             [clojure.string :as str]
-            [metabase.mbql.util :as mbql.u]))
+            [metabase.mbql.util :as mbql.u]
+            [metabase.driver.datomic.util :as util]))
 
 (defn attributes
   "Query db for all attribute entities."
@@ -60,8 +61,10 @@
 
 (defmulti ->rvalue mbql.u/dispatch-by-clause-name-or-class)
 
-(defmethod ->rvalue (class Field) [this]
-  (keyword (:name this)))
+(defmethod ->rvalue (class Field) [{:keys [name table_id] :as field}]
+  (if (some #{\/} name)
+    (keyword name)
+    (keyword (:name (qp.store/table table_id)) name)))
 
 (defmethod ->rvalue :field-id [[_ field-name]]
   (->rvalue (qp.store/field field-name)))
@@ -159,8 +162,8 @@
         db      (:db native)
         datalog (read-string (:query native))
         results (d/q (dissoc datalog :fields) db)
-        x {:columns (concat (map (comp str ->rvalue) fields)
-                            (map (comp str ->rvalue) breakout)
+        x {:columns (concat (map (comp util/kw->str ->rvalue) fields)
+                            (map (comp util/kw->str ->rvalue) breakout)
                             (if aggregation
                               [(name (ffirst aggregation))]))
            :rows    (resolve-fields db results (:fields datalog))}]

@@ -3,14 +3,15 @@
 
   :plugins [[lein-tools-deps "0.4.3"]]
   :middleware [lein-tools-deps.plugin/resolve-dependencies-with-deps-edn]
-  :lein-tools-deps/config {:config-files [:install :project]}
+  :lein-tools-deps/config {:aliases [:main]
+                           :config-files [:install :project]}
 
   :profiles
   {:provided
    {:dependencies [[metabase-core "1.0.0-SNAPSHOT"]]}
 
-   :datomic-free {:lein-tools-deps/config { :aliases [:datomic-free]}}
-   :datomic-pro {:lein-tools-deps/config { :aliases [:datomic-pro]}}
+   :datomic-free {:lein-tools-deps/config {:aliases [:datomic-free]}}
+   :datomic-pro {:lein-tools-deps/config {:aliases [:datomic-pro]}}
 
    :uberjar
    {:auto-clean    true

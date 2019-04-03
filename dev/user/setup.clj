@@ -35,13 +35,16 @@
                   :metadata_sync_schedule "0 50 * * * ? *"})]
     (sync/sync-database! dbinst)))
 
-(defn drop-database []
-  (let [dbinst (db/select-one Database :name "MusicBrainz")
-        tables (db/select Table :db_id (:id dbinst))
-        fields (db/select Field {:where [:in :table_id (map :id tables)]})]
-    (db/delete! Field {:where [:in :id (map :id fields)]})
-    (db/delete! Table {:where [:in :id (map :id tables)]})
-    (db/delete! Database :id (:id dbinst))))
+(defn remove-database
+  ([]
+   (remove-database  "MusicBrainz"))
+  ([name]
+   (let [dbinst (db/select-one Database :name name)
+         tables (db/select Table :db_id (:id dbinst))
+         fields (db/select Field {:where [:in :table_id (map :id tables)]})]
+     (db/delete! Field {:where [:in :id (map :id fields)]})
+     (db/delete! Table {:where [:in :id (map :id tables)]})
+     (db/delete! Database :id (:id dbinst)))))
 
 (defn setup-all []
   (setup-first-user)

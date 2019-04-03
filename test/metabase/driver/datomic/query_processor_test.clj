@@ -6,7 +6,8 @@
             [metabase.models.database :as database]))
 
 
+#_
 (data/with-db (db/select-one database/Database)
   (qp/mbql->native {:query
-                    {:source-table }})
+                    {:source-table x}})
   )
