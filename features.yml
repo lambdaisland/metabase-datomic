@@ -1,0 +1,47 @@
+- Basics:
+    - "{:source-table integer-literal}": Yes
+    - "{:fields [& field]}": Yes
+    - "{:breakout [& concrete-field]}": Yes
+    - "{:filter filter-clause}":
+        - "[:and & filter-clause]":
+        - "[:or & filter-clause]":
+        - "[:notfilter-clause]":
+        - "[:= concrete-field value & value]":
+        - "[:!= concrete-field value & value]":
+        - "[:< concrete-field orderable-value]":
+        - "[:> concrete-field orderable-value]":
+        - "[:<= concrete-field orderable-value]":
+        - "[:>= concrete-field orderable-value]":
+        - "[:is-null concrete-field]":
+        - "[:not-null concrete-field]":
+        - "[:between concrete-field min orderable-value max orderable-value]":
+        - "[:inside lat concrete-field lon concrete-field lat-max numeric-literal lon-min numeric-literal lat-min numeric-literal lon-max numeric-literal]":
+        - "[:starts-with concrete-field string-literal]":
+        - "[:contains concrete-field string-literal]":
+        - "[:does-not-contain concrete-field string-literal]":
+        - "[:ends-with concrete-field string-literal]":
+        - "[:time-interval field concrete-field n :current|:last|:next|integer-literal unit relative-datetime-unit]":
+    - "{:limit integer-literal}":
+    - "{:order-by [& order-by-clause]}":
+- :basic-aggregations:
+    - "{:aggregation aggregation-clause}":
+        - "[:count]": Yes
+        - "[:count concrete-field]":
+        - "[:cum-count concrete-field]":
+        - "[:cum-sum concrete-field]":
+        - "[:distinct concrete-field]":
+        - "[:stddev concrete-field]":
+        - "[:sum concrete-field]":
+        - "[:min concrete-field]":
+        - "[:max concrete-field]":
+        - "[:share filter-clause]":
+- :foreign-keys:
+- :nested-fields:
+- :set-timezone:
+- :expressions:
+    - "{:expressions {expression-name expression}}":
+- :native-parameters:
+- :expression-aggregations:
+- :nested-queries:
+- :binning:
+- :case-sensitivity-string-filter-options:

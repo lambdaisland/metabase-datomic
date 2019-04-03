@@ -1,0 +1,110 @@
+#!/usr/bin/env ruby
+# coding: utf-8
+
+require 'yaml'
+
+class Object
+  def to_html
+    inspect.to_html
+  end
+end
+
+class String
+  def to_html
+    gsub("&", "&amp;")
+      .gsub("<", "&lt;")
+      .gsub(">", "&gt;")
+      .gsub('"', "&quot;")
+      .gsub("'", "&apos;")
+  end
+end
+
+class Symbol
+  def to_html
+    ":#{self}"
+  end
+end
+
+class Array
+  def __html_props
+    if Hash === self[1]
+      self[1].map do |k,v|
+        " #{k.to_s.to_html}='#{v.to_html}'"
+      end.join
+    end
+  end
+
+  def __html_children
+    if Hash === self[1]
+      drop(2)
+    else
+      drop(1)
+    end
+  end
+
+  def to_html
+    "<#{first}#{__html_props}>#{__html_children.map(&:to_html).join}</#{first}>"
+  end
+end
+
+class TrueClass
+  def to_html
+    "Yes"
+  end
+end
+
+class NilClass
+  def to_html
+    ""
+  end
+end
+
+def raw(s)
+  class << s
+    def to_html
+      self
+    end
+  end
+  s
+end
+
+def indent(n)
+  raw("&nbsp;" * n)
+end
+
+def subfeature_table(key, value)
+  [[:tr,
+    [:td, {align: "left"}, indent(4), key],
+    [:td, {align: "center"}, (value.is_a?(Array) ? "" : value)]],
+   *(value.is_a?(Array) ? value : []).map do |v|
+     key = v.first.first
+     value = v.first.last
+     [:tr,
+      [:td, {align: "left"}, indent(8), key],
+      [:td, {align: "center"}, (value.is_a?(Array) ? "" : value)]]
+   end
+  ]
+end
+
+def feature_table(yaml)
+  yaml.flat_map do |feature|
+    value = feature.first.last
+    feature = feature.first.first
+    [
+      [:tr,
+       [:th, {align: "left"}, feature],
+       [:th, {align: "center"}, (value.is_a?(String) ? value : "")]
+      ],
+      *(value.is_a?(Array) ? value : []).flat_map do |s|
+        subfeature_table(s.first.first, s.first.last)
+      end
+    ]
+  end
+end
+
+puts [:table,
+      [:tr,
+       [:th, {align: "left"}, "Feature"],
+       [:th, {align: "center"}, "Supported?"]],
+      *feature_table(YAML.load(IO.read('features.yml')))
+     ].to_html
