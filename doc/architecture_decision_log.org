@@ -1,0 +1,178 @@
+#+TITLE: Metabase-Datomic: Architecture Decision Log
+
+For information on ADRs (Architecture Decision Records) see [[http://thinkrelevance.com/blog/2011/11/15/documenting-architecture-decisions][Documenting
+Architecture Decisions]] by Michael Nygard.
+
+* 001: The Metabase schema is inferred from the Datomic schema
+
+  Status: ACCEPTED
+
+** Context
+
+   Metabase views the world as consisting of Tables and Fields. Datomic thinks
+   in Entities with Attributes. We need some way to map the latter model onto
+   the former that corresponds with people's intuition about their data.
+
+   While in theory you can mix and match attributes freely in Datomic, in
+   practice people's data tends to be neatly divided into types of entities,
+   each with their own distinct set of attributes. This tends to roughly map to
+   how people use attribute namespaces in their schemas, so while there is no
+   explicit modeling of a entity "type", you can informally derive that entities
+   mostly consisting of attributes named ~:user/*~ are "user"-type entities.
+
+** Decision
+
+   Attributes in Datomic are namespaced keywords, we treat each namespace
+   (a.k.a. prefix) that occurs in the Datomic schema as a metabase Table, with
+   the exception of some internal prefixes, namely ~["db" "db.alter" "db.excise"
+   "db.install" "db.sys" "fressian"]~.
+
+   An entity that has any attributes with the given prefix is mapped to a Row in
+   this Table.
+
+   Any attribute with the given prefix, or any attribute that co-occurs with
+   attributes with the given prefix, is mapped to a Field (column) of this
+   Table. For attributes which have the same prefix as the table name, the field
+   name is the attribute name without the prefix. For other attributes we use
+   the full attribute name as the field name.
+
+   Example:
+
+   #+begin_src clojure
+     {:artist/name "Beatles"
+      :artist/startYear 1960
+      :group/location "Liverpool"}
+   #+end_src
+
+   This becomes a row in an "artist" table, with fields "name", "startYear", and "group/location".
+
+   It also becomes a row in the "group" table.
+
+** Consequences
+
+   If entities have attributes with multiple namespaces, then these entities
+   occur in multiple "tables".
+
+   When deriving Tables and Fields from a Datomic database that has a schema but
+   no data, then only the prefixes can be examined, so each attribute only
+   occurs as a Field in a single Table. Once data is added an attribute could
+   become a Field in other Tables as well, and a re-sync is necessary.
+
+   To test "table membership", we need to check if any of the given attributes
+   is present, so the equivalent of ~SELECT * FROM artists;~ becomes:
+
+   #+begin_src clojure
+   {:find [?eid]
+    :where [[(or [?eid :artist/name] [?eid :artist/startYear])]]}
+   #+end_src
+
+** Future considerations
+
+   This derived schema may be sub-optimal, and it might be necessary to provide
+   people with a way to edit the mapping.
+
+* 002: Use Datalog in map format as "native" format
+
+  Status: ACCEPTED
+
+** Context
+
+   Metabase drivers perform their queries in two steps, first they convert the
+   MBQL (Metabase Query Language) into a "native" format (typically SQL), then
+   they execute this native query and return the results.
+
+   A Metabase user can at any point switch to a "native" query mode, where the
+   query can be edited by hand, so a driver does not only need to support the
+   queries it generates, but any query a user can reasonably pass it.
+
+** Decision
+
+   As the "native" representation for Datomic queries we use the map format of
+   Datomic's Datalog, with certain restrictions. E.g. we do not allow pull
+   queries, as they can lead to arbitrary nesting, which isn't suitable for the
+   table-based representation that Metabase works with.
+
+** Consequences
+
+   We need to not only support the queries we generate, but other arbitrary
+   datalog queries as well. We need to decide and define which (classes of)
+   queries we accept, so that the user knows which features are available when
+   writing queries.
+
+* 003: Use an "extended Datalog" format
+
+  Status: ACCEPTED
+
+** Context
+  We are challenged with the task of converting Metabase's internal query
+  language MBQL to something Datomic understands: Datalog. MBQL by and large
+  follows SQL semantics, which is in some areas quite different from Datalog.
+
+  Consider this query:
+
+  #+begin_src sql
+  SELECT first_name, last_name FROM users WHERE age > 18;
+  #+end_src
+
+  Naively this would translate to
+
+  #+begin_quote clojure
+  [:find ?first ?last
+   :where [?u :user/first-name ?first]
+          [?u :user/last-name ?last]
+          [?u :user/age ?age]
+          [(< 18 ?age)]]
+  #+end_quote
+
+  But this won't find entities where ~:user/first-name~ or ~:user/last-name~
+  aren't present, whereas the SQL will. You could address this with a pull query
+  in the ~:find~ clause instead, but these are harder to construct
+  algorithmically, and harder to process, since results will now have arbitrary
+  nesting.
+
+  Another example is ~ORDER BY~, a functionality that Datlog does not provide
+  and must instead be performed in application code.
+
+  We need to capture these requirements in a "native" query format that the user
+  is able to manipulate, since Metabase allows to convert any query it generates
+  to "native" for direct editing.
+
+** Decision
+
+  In order to stick to MBQL/SQL semantics we process queries in two parts: we
+  perform a Datalog query to fetch all entities under consideration, then do a
+  second pass in application code, to pull out the necessary fields, and do
+  sorting.
+
+  To this end we add two extra fields to Datalog: ~:select~, and ~:order-by~.
+  The first determines which fields each returned row has, so the main query
+  only returns entity ids and aggregates like ~count~, the second determines the
+  sorting of the result.
+
+  #+begin_src clojure
+    {:find [?eid]
+
+     :where [[(or [?eid :user/first-name]
+                  [?eid :user/last-name]
+                  [?eid :user/age])]
+             [?eid :user/age ?age]
+             [(< 18 ?age)]]
+
+     :select [(:user/first-name ?eid)
+              (:user/last-name ?eid)]
+
+     :order-by [(:user/last-name ?eid) :desc]}
+  #+end_src
+
+** Consequences
+
+   We will still have to be able to handle native queries that don't have a
+   ~:select~ clause.
+
+* Template
+
+  Status: ACCEPTED / SUPERCEDED BY XXX
+
+** Context
+** Decision
+** Consequences
