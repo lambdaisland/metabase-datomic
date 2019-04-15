@@ -8,7 +8,8 @@
 (driver/add-parent! :datomic ::tx/test-extensions)
 
 (def metabase->datomic-type
-  (into {}
+  (into {:type/DateTime :db.type/instant
+         :type/Date :db.type/instant}
         (map (fn [[k v]] [v k]))
         datomic-driver/datomic->metabase-type))
 
@@ -35,7 +36,9 @@
   (let [attrs (map (comp (partial keyword table-name)
                          :field-name)
                    field-definitions)]
-    (map (partial zipmap attrs) rows)))
+    (map (fn [attr-map]
+           (into {} (filter val) attr-map))
+         (map (partial zipmap attrs) rows))))
 
 (defmethod tx/create-db! :datomic
   [_ {:keys [table-definitions] :as dbdef} & {:keys [skip-drop-db?] :as opts}]

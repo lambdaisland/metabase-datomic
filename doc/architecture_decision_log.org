@@ -169,6 +169,47 @@ Architecture Decisions]] by Michael Nygard.
    We will still have to be able to handle native queries that don't have a
    ~:select~ clause.
 
+* 004: Use specific conventions for Datalog logic variable names
+  Status: ACCEPTED
+
+** Context
+
+   Datalog uses logic variables (the ones that start with a question mark) in
+   its queries. These names are normally arbitrary, but since we need to analyze
+   the query after the fact (because of the MBQL/Native query split in
+   Metabase), we need to be able to re-interpret these names.
+
+   In Datalog adding a field to the ~:find~ clause has an impact on how grouping
+   is handled, and so we treat MBQL ~:fields~ references differently from
+   ~:breakout~ references. Fields from ~:breakouts~ are directly put in the
+   ~:find~ clause, for the ones in ~:fields~ we only look up the entity id.
+
+   When sorting afterwards this becomes problematic, because we no longer have a
+   unified way of looking up field references. The solution is to have enough
+   information in the names, so that we can look up field references, either by
+   finding them directly in the result, or by going through the Datomic entity.
+
+** Decision
+
+   A name like ~?artist~ refers to an entity that logically belongs to the
+   "artist" table.
+
+   A name like ~?artist|artist|name~ refers to the ~:artist/name~ attribute,
+   used on an entity that logically belongs to the ~"artist"~ table. The form
+   here is ~?table|attribute-namespace|attribute-name~.
+
+   Another example: ~?venue|db|id~, refers to the ~:db/id~ of a venue.
+
+   In the ~:select~ and ~:order-by~ clauses the form ~(:foo/bar ?eid)~ can also
+   be used, which is equivalent to ~?eid|foo|bar~.
+
+** Consequences
+
+   We'll have to see how this continues to behave when foreign keys and other
+   constructs are added to the mix, but so far this handles the use cases of
+   sorting with both ~:fields~ and ~:breakouts~ based queries, and it seems a
+   more future proof approach in general.
+
 * Template
 
   Status: ACCEPTED / SUPERCEDED BY XXX

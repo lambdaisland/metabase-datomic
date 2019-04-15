@@ -1,5 +1,6 @@
 (ns metabase.driver.datomic-test
-  (:require [clojure.test :as test :refer [is are testing]]
+  (:require [clojure.test :as test :refer [deftest is are testing]]
+            [metabase.driver.datomic.test :refer [with-datomic]]
             [metabase.driver :as driver]
             [metabase.driver.datomic.test-data :as test-data]
             [metabase.test.data.interface :as tx]
@@ -14,84 +15,50 @@
 
 (require 'matcher-combinators.test)
 
-(defmacro deftest [name & body]
-  `(test/deftest ~name
-     (driver/with-driver :datomic
-       ~@body)))
-
 (deftest basic-query-test
-  (is (match? {:columns ["db/id" "name" "code"]
-               :rows    [[pos-int? "Belgium" "BE"]
-                         [pos-int? "Germany" "DE"]
-                         [pos-int? "Finnland" "FI"]]}
-              (test-data/rows+cols
-               (data/dataset test-data/countries
-                 (data/run-mbql-query country))))))
+  (with-datomic
+    (is (match? {:columns ["db/id" "name" "code"]
+                 :rows    [[pos-int? "Belgium" "BE"]
+                           [pos-int? "Germany" "DE"]
+                           [pos-int? "Finnland" "FI"]]}
+                (test-data/rows+cols
+                 (data/dataset test-data/countries
+                   (data/run-mbql-query country)))))
 
-(comment
-  (driver/with-driver :datomic
-    (test-data/rows+cols
-     (data/dataset test-data/aggr-data
-       (data/run-mbql-query foo
-         {:aggregation [[:count]]
-          :breakout    [$f1]}))))
+    (is (match?
+         {:data {:columns ["name" "db/id"],
+                 :rows [["20th Century Cafe" pos-int?]
+                        ["25°" pos-int?]
+                        ["33 Taps" pos-int?]
+                        ["800 Degrees Neapolitan Pizzeria" pos-int?]
+                        ["BCD Tofu House" pos-int?]
+                        ["Baby Blues BBQ" pos-int?]
+                        ["Barney's Beanery" pos-int?]
+                        ["Beachwood BBQ & Brewing" pos-int?]
+                        ["Beyond Sushi" pos-int?]
+                        ["Bludso's BBQ" pos-int?]]}}
+         (data/run-mbql-query venues
+           {:fields   [$name [:field-id (data/id :venues "db/id")]]
+            :limit    10
+            :order-by [[:asc $name]]})))))
 
-  (nqry)
-
-  (driver/with-driver :datomic
-    (data/dataset test-data/countries
-      (data/run-mbql-query country)))
-
-
-  (user/refer-repl)
-  (remove-database "countries")
-
-
-  (driver/with-driver :datomic
-    (data/dataset test-data/countries
-      (data/run-mbql-query country)))
-
-  (db/select Database)
-
-  (user/setup-driver!))
 
 (deftest aggregrate-count-test
-  #_(is (= {:columns ["F1" "count"],
-            :rows    [["xxx" 2] ["yyy" 1]]}))
-  (prn (data/dataset test-data/aggr-data
-         (data/run-mbql-query foo
-           {:aggregation [[:count]]
-            :breakout    [$f1]})))
-
-  ;; Currently we turn this
-  {:source-table 39,
-   :breakout [[:field-id 158]],
-   :aggregation [[:count]],
-   :order-by [[:asc [:field-id 158]]]}
-
-  ;; Into this
-  '{:where [(or [?eid :foo/f1] [?eid :foo/f2]) [?eid :foo/f1 ?breakout-0]],
-    :order-by [[:asc [:entity 0 :foo/f1]]],
-    :find [?breakout-0 (count ?eid)],
-    :fields [[:nth 0] [:nth 1]]}
-
-  ;; This is problematic because the first column in the result isn't an entity
-  ;; id, so [:entity 0 :foo/f1] fails. This is because [:field-id 158] is
-  ;; handled completely differently if it's in :fields vs :breakout. maybe we
-  ;; should stick the eid into the result together with the broken out fields?
-
-  '{:where [(or [?eid :foo/f1] [?eid :foo/f2]) [?eid :foo/f1 ?breakout-0]], :order-by [[:asc [:entity 0 :foo/f1]]], :find [?breakout-0 (count ?eid)], :fields [[:nth 0] [:nth 1]]}
-
-
-  )
+  (with-datomic
+    (is (match? {:data {:columns ["f1" "count"],
+                        :rows    [["xxx" 2] ["yyy" 1]]}}
+                (data/dataset test-data/aggr-data
+                  (data/run-mbql-query foo
+                    {:aggregation [[:count]]
+                     :breakout    [$f1]}))))))
 
 (deftest order-by-test
-  (is (match? {:columns ["db/id" "name" "code"],
-               :rows
-               [[pos-int? "Germany" "DE"]
-                [pos-int? "Finnland" "FI"]
-                [pos-int? "Belgium" "BE"]]}
-              (test-data/rows+cols
-               (data/dataset test-data/countries
-                 (data/run-mbql-query country
-                   {:order-by [[:desc $name]]}))))))
+  (with-datomic
+    (is (match? {:data {:columns ["db/id" "name" "code"],
+                        :rows
+                        [[pos-int? "Germany" "DE"]
+                         [pos-int? "Finnland" "FI"]
+                         [pos-int? "Belgium" "BE"]]}}
+                (data/dataset test-data/countries
+                  (data/run-mbql-query country
+                    {:order-by [[:desc $name]]}))))))

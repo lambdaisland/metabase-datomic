@@ -6,7 +6,20 @@
             [datomic.api :as d]
             [clojure.string :as str]
             [metabase.mbql.util :as mbql.u]
-            [metabase.driver.datomic.util :as util]))
+            [metabase.driver.datomic.util :as util :refer [pal par]]
+            [toucan.db :as db]
+            [metabase.models.table :refer [Table]]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; SCHEMA
+
+(def reserved-prefixes
+  #{"fressian"
+    "db"
+    "db.alter"
+    "db.excise"
+    "db.install"
+    "db.sys"})
 
 (defn attributes
   "Query db for all attribute entities."
@@ -23,7 +36,7 @@
 (defn derive-table-names
   "Find all \"tables\" i.e. all namespace prefixes used in attribute names."
   [db]
-  (remove #{"fressian" "db" "db.alter" "db.excise" "db.install" "db.sys"}
+  (remove reserved-prefixes
           (keys (attrs-by-table db))))
 
 (defn table-columns
@@ -55,6 +68,9 @@
 (defn db []
   (-> (get-in (qp.store/database) [:details :db]) connect d/db))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; QUERY->NATIVE
+
 (defn into-clause
   ([qry clause coll]
    (into-clause qry clause identity coll))
@@ -63,6 +79,7 @@
      (update qry clause (fn [x] (into (or x []) xform coll)))
      qry)))
 
+;; [:field-id 55] => :artist/name
 (defmulti ->attrib mbql.u/dispatch-by-clause-name-or-class)
 
 (defmethod ->attrib (class Field) [{:keys [name table_id] :as field}]
@@ -76,13 +93,26 @@
 (defmethod ->attrib :aggregation [[_ field-name]]
   (->attrib (qp.store/field field-name)))
 
-(def field-ref nil)
+;; [:field-id 55] => ?artist
+(defmulti ->eid mbql.u/dispatch-by-clause-name-or-class)
 
-(defmulti field-ref (fn [field-ref qry]
-                      (mbql.u/dispatch-by-clause-name-or-class field-ref)))
+(defmethod ->eid (class Table) [{:keys [name]}]
+  (symbol (str "?" name)))
 
-(defmethod field-ref :field-id [f qry]
-  [:entity (count (:find qry)) (->attrib f)])
+(defmethod ->eid (class Field) [{:keys [table_id]}]
+  (->eid (qp.store/table table_id)))
+
+(defmethod ->eid Integer [table_id]
+  (->eid (qp.store/table table_id)))
+
+(defmethod ->eid :field-id [[_ field-id]]
+  (->eid (qp.store/field field-id)))
+
+(defmulti field-ref mbql.u/dispatch-by-clause-name-or-class)
+
+(defmethod field-ref :field-id [field-ref]
+  (list (->attrib field-ref)
+        (->eid field-ref)))
 
 ;; (defmethod field-ref :aggregation [_ _]
 ;;   ;; MBQL only supports a single aggregation, we only add it first in the result
@@ -90,50 +120,62 @@
 
 (defn apply-source-table [qry {:keys [source-table]} db]
   (let [table   (qp.store/table source-table)
-        columns (map first (table-columns db (:name table)))
-        clause  `(~'or ~@(map #(vector '?eid %) columns))]
-    (into-clause qry :where [clause])))
+        eid     (->eid table)
+        fields  (db/select Field :table_id source-table)
+        attribs (remove (comp reserved-prefixes namespace)
+                        (map ->attrib fields))
+        clause  `(~'or ~@(map #(vector eid %) attribs))]
+    (-> qry
+        (into-clause :where [clause]))))
 
-(defn apply-fields [qry {:keys [fields]} db]
+;; Entries in the :fields clause can be
+;;
+;; | Concrete field refrences | [:field-id 15]           |
+;; | Expression references    | [:expression :sales_tax] |
+;; | Aggregates               | [:aggregate 0]           |
+;; | Foreign keys             | [:fk-> 10 20]            |
+(defn apply-fields [qry {:keys [source-table fields order-by]} db]
   (if (seq fields)
     (-> qry
-        (into-clause :find ['?eid])
-        (into-clause :fields
-                     (map #(field-ref % qry))
-                     fields))
+        (into-clause :find [(->eid source-table)])
+        (into-clause :select (map field-ref) fields))
     qry))
 
 ;; breakouts with aggregation = GROUP BY
 ;; breakouts without aggregation = SELECT DISTINCT
-(defn apply-breakouts [qry {:keys [breakout]} db]
+(defn apply-breakouts [qry {:keys [breakout order-by]} db]
   (if (seq breakout)
-    (-> qry
-        (into-clause :find
-                     (map (fn [idx]
-                            (symbol (str "?breakout-" idx))))
-                     (range (count breakout)))
-        (into-clause :where
-                     (map-indexed (fn [idx f]
-                                    ['?eid
-                                     (->attrib f)
-                                     (symbol (str "?breakout-" idx))]))
-                     breakout)
-        (into-clause :fields
-                     (map (fn [idx] [:nth idx]))
-                     (range (count (:find qry))
-                            (+ (count (:find qry)) (count breakout)))))
+    (let [breakout-sym (fn [field-ref]
+                         (let [attr (->attrib field-ref)
+                               eid (->eid field-ref)]
+                           (symbol (str eid
+                                        "|"
+                                        (namespace attr)
+                                        "|"
+                                        (name attr)))))]
+      (-> qry
+          (into-clause :find (map breakout-sym) breakout)
+          (into-clause :with (map ->eid) breakout)
+          (into-clause :where (map (juxt ->eid ->attrib breakout-sym)) breakout)
+          (into-clause :select (map field-ref) breakout)))
     qry))
 
-(defn apply-aggregation [qry {:keys [aggregation]} db]
-  (if (= :count (ffirst aggregation))
+(defmulti apply-aggregation (fn [qry {:keys [aggregation]} db]
+                              (ffirst aggregation)))
+
+(defmethod apply-aggregation :default [qry _ _] qry)
+
+(defmethod apply-aggregation :count [qry {:keys [aggregation]} db]
+  ;; TODO: this probably isn't accurate, but Datomic doesn't have a COUNT(*) or
+  ;; COUNT(1)
+  (let [count-clause (list 'count (first (:find qry)))]
     (-> qry
-        (into-clause :find ['(count ?eid)])
-        (into-clause :fields [[:nth (count (:find qry))]]))
-    qry))
+        (into-clause :find [count-clause])
+        (into-clause :select [count-clause]))))
 
 (defn apply-order-by [qry {:keys [order-by]}]
   (if (seq order-by)
-    (into-clause qry :order-by (map (juxt first (comp #(field-ref % {}) second))) order-by)
+    (into-clause qry :order-by (map (juxt first (comp field-ref second))) order-by)
     qry))
 
 (defn mbql->native [{:keys [database query] :as mbql-query}]
@@ -151,43 +193,63 @@
             )))}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; EXECUTE-QUERY
 
-(defmulti field-lookup (fn [[f _] _] f))
+(defn index-of [xs x]
+  (loop [idx 0
+         [y & xs] xs]
+    (if (= x y)
+      idx
+      (if (seq xs)
+        (recur (inc idx) xs)))))
 
-(defmethod field-lookup :nth [[_ idx] _]
-  #(nth % idx))
+(defn select-field
+  "Returns a function which, given a row of data fetched from datomic, will
+  extrect a single field. It will first check if the requested field was fetched
+  directly in the `:find` clause, if not it will resolve the entity and get the
+  attribute from there."
+  [{:keys [find]} entity-fn field]
+  (if-let [idx (index-of find field)]
+    (par nth idx)
+    (if (list? field)
+      (let [[attr ?eid] field
+            idx (index-of find ?eid)]
+        (assert (qualified-keyword? attr))
+        (assert (symbol? ?eid))
+        (if idx
+          (comp attr entity-fn (par nth idx))
+          (let [idx (index-of find (symbol (str ?eid "|"
+                                                (namespace attr) "|"
+                                                (name attr))))]
+            (assert idx)
+            (par nth idx)
+            ))))))
 
-(defmethod field-lookup :entity [[_ idx attr] entity]
-  #(do
-     (prn [:FFF % idx attr])
-     (get (entity (nth % idx)) attr)))
+(defn select-fields [qry entity-fn fields]
+  (apply juxt (map (pal select-field qry entity-fn) fields)))
 
-(defn juxt-fields [entity field-lookups]
-  (apply juxt (map #(field-lookup % entity) field-lookups)))
-
-(defn order-by->comparator [entity order-by]
+(defn order-clause->comparator [qry entity-fn order-by]
   (fn [x y]
-    (prn [x y])
-    (reduce (fn [result [dir field-ref]]
-              (prn field-ref)
+    (reduce (fn [result [dir field]]
               (if (= 0 result)
                 (*
                  (if (= :desc dir) -1 1)
-                 (compare ((field-lookup field-ref entity) x)
-                          ((field-lookup field-ref entity) y)))
+                 (compare ((select-field qry entity-fn field) x)
+                          ((select-field qry entity-fn field) y)))
                 (reduced result)))
             0
             order-by)))
 
-(defn order-by-attribs [entity order-by results]
+(defn order-by-attribs [qry entity-fn order-by results]
   (if (seq order-by)
-    (sort (order-by->comparator entity order-by) results)
+    (sort (order-clause->comparator qry entity-fn order-by) results)
     results))
 
-(defn resolve-fields [db result {:keys [fields order-by] :as datalog}]
-  (let [entity (memoize (fn [eid] (d/entity db eid)))]
-    (->> (map (juxt-fields entity fields) result)
-         (order-by-attribs entity order-by))))
+(defn resolve-fields [db result {:keys [select order-by] :as datalog}]
+  (let [entity-fn (memoize (fn [eid] (d/entity db eid)))]
+    (->> result
+         (order-by-attribs datalog entity-fn order-by)
+         (map (select-fields datalog entity-fn select)))))
 
 (defmulti col-name mbql.u/dispatch-by-clause-name-or-class)
 
@@ -212,14 +274,8 @@
    :rows (seq results)})
 
 (def reslt (atom nil))
-@reslt
-
-
 
 (defn execute-query [{:keys [native query] :as native-query}]
-  (prn query)
-  (prn native)
-  (prn (:settings native-query))
   (let [db      (or (:db native) (db))
         datalog (read-string (:query native))
         results (d/q (dissoc datalog :fields) db)
