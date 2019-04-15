@@ -24,7 +24,8 @@
     (start-web-server! app)
     (init!)
     (setup-driver!)
-    (open-metabase)))
+    (open-metabase)
+    ((jit user.repl/clean-up-in-mem-dbs))))
 
 (defn setup! []
   ((jit user.setup/setup-all)))
@@ -35,6 +36,14 @@
    "../metabase-datomic/dev"
    "../metabase-datomic/test")
   ((jit clojure.tools.namespace.repl/refresh)))
+
+(defn refresh-all []
+  ((jit clojure.tools.namespace.repl/set-refresh-dirs)
+   "../metabase/src"
+   "../metabase-datomic/src"
+   "../metabase-datomic/dev"
+   "../metabase-datomic/test")
+  ((jit clojure.tools.namespace.repl/refresh-all)))
 
 (defn refer-repl []
   (require '[user.repl :refer :all]

@@ -46,6 +46,14 @@
      (db/delete! Table {:where [:in :id (map :id tables)]})
      (db/delete! Database :id (:id dbinst)))))
 
+(defn reset-database!
+  ([]
+   (remove-database)
+   (setup-database))
+  ([name]
+   (remove-database name)
+   (setup-database name)))
+
 (defn setup-all []
   (setup-first-user)
   (setup-site)

@@ -2,7 +2,8 @@
 {:plugins [:kaocha.plugin/notifier
            :kaocha.plugin/print-invocations
            :kaocha.plugin/profiling
-           :kaocha.plugin/hooks]
+           #_:kaocha.plugin/hooks
+           ]
 
  :tests
  [{:source-paths ["../metabase-datomic/src"]

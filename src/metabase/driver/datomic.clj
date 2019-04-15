@@ -5,7 +5,8 @@
             [metabase.query-processor :as qp]
             [metabase.query-processor.store :as qp.store]
             [datomic.api :as d]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [toucan.db :as db]))
 
 (require 'metabase.driver.datomic.monkey-patch)
 
@@ -30,8 +31,10 @@
         {:name   table-name
          :schema nil}))}))
 
+(derive :type/Keyword :type/Text)
+
 (def datomic->metabase-type
-  {:db.type/keyword :type/Name       ;; Value type for keywords.
+  {:db.type/keyword :type/Keyword ;; Value type for keywords.
    :db.type/string  :type/Text       ;; Value type for strings.
    :db.type/boolean :type/Boolean    ;; Boolean value type.
    :db.type/long    :type/Integer    ;; Fixed integer value type. Same semantics as a Java long: 64 bits wide, two's complement binary representation.
@@ -39,12 +42,12 @@
    :db.type/float   :type/Float      ;; Floating point value type. Same semantics as a Java float: single-precision 32-bit IEEE 754 floating point.
    :db.type/double  :type/Float      ;; Floating point value type. Same semantics as a Java double: double-precision 64-bit IEEE 754 floating point.
    :db.type/bigdec  :type/Decimal    ;; Value type for arbitrary precision floating point numbers. Maps to java.math.BigDecimal on Java platforms.
-   :db.type/ref     :type/Integer    ;; Value type for references. All references from one entity to another are through attributes with this value type.
+   :db.type/ref     :type/FK         ;; Value type for references. All references from one entity to another are through attributes with this value type.
    :db.type/instant :type/Time       ;; Value type for instants in time. Stored internally as a number of milliseconds since midnight, January 1, 1970 UTC. Maps to java.util.Date on Java platforms.
    :db.type/uuid    :type/UUID       ;; Value type for UUIDs. Maps to java.util.UUID on Java platforms.
    :db.type/uri     :type/URL        ;; Value type for URIs. Maps to java.net.URI on Java platforms.
-   :db.type/bytes   :type/Array} ;; Value type for small binary data. Maps to byte array on Java platforms. See limitations.
-  )
+   :db.type/bytes   :type/Array      ;; Value type for small binary data. Maps to byte array on Java platforms. See limitations.
+   })
 
 (defn describe-table [instance {table-name :name}]
   (let [url  (get-in instance [:details :db])
@@ -52,20 +55,23 @@
         cols (datomic.qp/table-columns db table-name)]
     {:name   table-name
      :schema nil
-     :fields (into #{{:name          "db/id"
-                      :database-type "db.type/ref"
-                      :base-type     :type/Integer
-                      :pk?           true}}
-                   (for [[col type] cols
-                         ;; Ignore "foreign keys" for now
-                         :when (not (= :db.type/ref type))
-                         :let [col-name (if (= (namespace col)
-                                               table-name)
-                                          (name col)
-                                          (util/kw->str col))]]
-                     {:name          col-name
-                      :database-type (util/kw->str type)
-                      :base-type     (datomic->metabase-type type)}))}))
+
+     ;; Fields *must* be a set
+     :fields
+     (into #{{:name          "db/id"
+              :database-type "db.type/ref"
+              :base-type     :type/Integer
+              :pk?           true}}
+           (for [[col type] cols
+                 ;; Ignore "foreign keys" for now
+                 :when (not (= :db.type/ref type))
+                 :let [col-name (if (= (namespace col)
+                                       table-name)
+                                  (name col)
+                                  (util/kw->str col))]]
+             {:name          col-name
+              :database-type (util/kw->str type)
+              :base-type     (datomic->metabase-type type)}))}))
 
 (defmethod driver/describe-table :datomic [_ instance table]
   (describe-table instance table))
@@ -103,4 +109,10 @@
     (conn)
     [{:country/name "foo"
       :label/name "bar"
-      }]))
+      }])
+
+  (user/refer-repl)
+
+  (qry 1)
+
+  )

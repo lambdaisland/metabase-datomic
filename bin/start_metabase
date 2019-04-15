@@ -40,4 +40,4 @@ wq
 EOF
 fi
 
-lein repl :headless :port 4444
+lein update-in :repl-options assoc :init-ns user -- repl :headless :port 4444
