@@ -9,6 +9,7 @@
             [clojure.string :as str]))
 
 (def mbrainz-url "datomic:free://localhost:4334/mbrainz")
+(def eeleven-url "datomic:free://localhost:4334/eeleven")
 
 (defn conn
   ([]

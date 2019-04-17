@@ -14,6 +14,7 @@
 
 (defmethod driver/supports? [:datomic :basic-aggregations] [_ _] true)
 (defmethod driver/supports? [:datomic :case-sensitivity-string-filter-options] [_ _] false)
+(defmethod driver/supports? [:datomic :foreign-keys] [_ _] true)
 
 (defmethod driver/can-connect? :datomic [_ {db :db}]
   (try
@@ -43,7 +44,7 @@
    :db.type/double  :type/Float      ;; Floating point value type. Same semantics as a Java double: double-precision 64-bit IEEE 754 floating point.
    :db.type/bigdec  :type/Decimal    ;; Value type for arbitrary precision floating point numbers. Maps to java.math.BigDecimal on Java platforms.
    :db.type/ref     :type/FK         ;; Value type for references. All references from one entity to another are through attributes with this value type.
-   :db.type/instant :type/Time       ;; Value type for instants in time. Stored internally as a number of milliseconds since midnight, January 1, 1970 UTC. Maps to java.util.Date on Java platforms.
+   :db.type/instant :type/DateTime   ;; Value type for instants in time. Stored internally as a number of milliseconds since midnight, January 1, 1970 UTC. Maps to java.util.Date on Java platforms.
    :db.type/uuid    :type/UUID       ;; Value type for UUIDs. Maps to java.util.UUID on Java platforms.
    :db.type/uri     :type/URL        ;; Value type for URIs. Maps to java.net.URI on Java platforms.
    :db.type/bytes   :type/Array      ;; Value type for small binary data. Maps to byte array on Java platforms. See limitations.
@@ -64,7 +65,7 @@
               :pk?           true}}
            (for [[col type] cols
                  ;; Ignore "foreign keys" for now
-                 :when (not (= :db.type/ref type))
+                 ;; :when (not (= :db.type/ref type))
                  :let [col-name (if (= (namespace col)
                                        table-name)
                                   (name col)
@@ -75,6 +76,15 @@
 
 (defmethod driver/describe-table :datomic [_ instance table]
   (describe-table instance table))
+
+(defmethod driver/describe-table-fks :datomic [_ database table]
+  nil)
+
+#_
+#{{:fk-column-name   su/NonBlankString
+   :dest-table       {:name   su/NonBlankString
+                      :schema (s/maybe su/NonBlankString)}
+   :dest-column-name su/NonBlankString}}
 
 (defonce mbql-history (atom ()))
 (defonce query-history (atom ()))

@@ -1,6 +1,7 @@
 (ns metabase.driver.datomic.query-processor-test
   (:require [metabase.driver.datomic.query-processor :as datomic.qp]
             [metabase.query-processor :as qp]
+            [clojure.test :refer :all]
             [metabase.driver.datomic.test :refer :all]
             [metabase.test.data :as data]
             [toucan.db :as db]
@@ -80,6 +81,13 @@
                    '[(count ?artist) (:artist/name ?artist)])]
     (is (= [42 "foo"]
            (select-fn [7 42])))))
+
+(with-datomic
+  (query->native
+   (data/mbql-query users
+     {:breakout [[:datetime-field $last_login :hour]]
+      :aggregation [[:count]]
+      :order-by [[:asc [:datetime-field $last_login :hour]]]})))
 
 (deftest execute-native-query-test
   (is (= {:columns ["?code" "?country"]

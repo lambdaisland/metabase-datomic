@@ -2,16 +2,16 @@
     - "{:source-table integer-literal}": Yes
     - "{:fields [& field]}":
         - "[:field-id field-id]": Yes
-        - "[:datetime-field local-field | fk unit]":
+        - "[:datetime-field local-field | fk unit]": Yes
     - "{:breakout [& concrete-field]}":
         - "[:field-id field-id]": Yes
         - "[:aggregation 0]": Yes
-        - "[:datetime-field local-field | fk unit]":
+        - "[:datetime-field local-field | fk unit]": Yes
     - "{:filter filter-clause}":
         - "[:and & filter-clause]":
         - "[:or & filter-clause]":
         - "[:notfilter-clause]":
-        - "[:= concrete-field value & value]":
+        - "[:= concrete-field value & value]": Yes
         - "[:!= concrete-field value & value]":
         - "[:< concrete-field orderable-value]":
         - "[:> concrete-field orderable-value]":
@@ -27,15 +27,15 @@
         - "[:ends-with concrete-field string-literal]":
         - "[:time-interval field concrete-field n :current|:last|:next|integer-literal unit relative-datetime-unit]":
     - "{:limit integer-literal}":
-    - "{:order-by [& order-by-clause]}":
+    - "{:order-by [& order-by-clause]}": Yes
 - :basic-aggregations:
     - "{:aggregation aggregation-clause}":
         - "[:count]": Yes
-        - "[:count concrete-field]":
+        - "[:count concrete-field]": Yes
         - "[:cum-count concrete-field]":
         - "[:cum-sum concrete-field]":
         - "[:distinct concrete-field]":
-        - "[:sum concrete-field]":
+        - "[:sum concrete-field]": Yes
         - "[:min concrete-field]":
         - "[:max concrete-field]":
         - "[:share filter-clause]":
