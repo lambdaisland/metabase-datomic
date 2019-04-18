@@ -1,14 +1,12 @@
 (ns metabase.driver.datomic.query-processor
-  (:require [metabase.driver :as driver]
-            [metabase.query-processor :as qp]
-            [metabase.query-processor.store :as qp.store]
-            [metabase.models.field :as field :refer [Field]]
+  (:require [clojure.string :as str]
             [datomic.api :as d]
-            [clojure.string :as str]
-            [metabase.mbql.util :as mbql.u]
             [metabase.driver.datomic.util :as util :refer [pal par]]
-            [toucan.db :as db]
-            [metabase.models.table :refer [Table]]))
+            [metabase.mbql.util :as mbql.u]
+            [metabase.models.field :as field :refer [Field]]
+            [metabase.models.table :refer [Table]]
+            [metabase.query-processor.store :as qp.store]
+            [toucan.db :as db]))
 
 ;; Local variable naming conventions:
 
@@ -204,9 +202,9 @@
         (into-clause :find (map field-sym) breakout)
         (into-clause :where (mapcat field-bindings) breakout)
         (into-clause :select (map (partial field-ref mbqry)) breakout)
-        (cond-> #_dqry
-          (empty? aggregation)
-          (into-clause :with (map ->eid) breakout)))
+        #_(cond-> #_dqry
+            (empty? aggregation)
+            (into-clause :with (map ->eid) breakout)))
     dqry))
 
 (defmulti aggregation-clause (fn [mbqry aggregation]

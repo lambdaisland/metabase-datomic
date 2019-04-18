@@ -1,11 +1,8 @@
 (ns metabase.driver.datomic
-  (:require [metabase.driver :as driver]
+  (:require [datomic.api :as d]
+            [metabase.driver :as driver]
             [metabase.driver.datomic.query-processor :as datomic.qp]
             [metabase.driver.datomic.util :as util]
-            [metabase.query-processor :as qp]
-            [metabase.query-processor.store :as qp.store]
-            [datomic.api :as d]
-            [clojure.string :as str]
             [toucan.db :as db]))
 
 (require 'metabase.driver.datomic.monkey-patch)

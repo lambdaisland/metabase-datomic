@@ -2,12 +2,11 @@
 {:plugins [:kaocha.plugin/notifier
            :kaocha.plugin/print-invocations
            :kaocha.plugin/profiling
-           #_:kaocha.plugin/hooks
-           ]
+           :kaocha.plugin/hooks]
 
  :tests
  [{:source-paths ["../metabase-datomic/src"]
    :test-paths ["../metabase-datomic/test"]}]
 
- :kaocha.hooks/pre-run [metabase-datomic.kaocha-hooks/pre-run]
+ :kaocha.hooks/pre-load [metabase-datomic.kaocha-hooks/pre-load]
  :kaocha.hooks/post-run [metabase-datomic.kaocha-hooks/post-run]}

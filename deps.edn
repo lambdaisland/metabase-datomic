@@ -28,7 +28,8 @@
                                                        org.slf4j/slf4j-nop]}}}
 
   :test
-  {:extra-paths ["../metabase/test"
+  {:extra-paths ["../metabase/src"
+                 "../metabase/test"
                  "../metabase-datomic/test"]
    :extra-deps  {lambdaisland/kaocha        {:mvn/version "0.0-409"}
                  expectations               {:mvn/version "2.2.0-beta2"}

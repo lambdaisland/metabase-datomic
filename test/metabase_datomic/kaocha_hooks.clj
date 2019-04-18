@@ -8,15 +8,19 @@
             [clojure.string :as str]
             [datomic.api :as d]))
 
-(defn pre-run [test-plan]
-  (test-setup/test-startup)
+(def startup-once
+  (delay
+   (test-setup/test-startup)))
+
+(defn pre-load [test-plan]
+  @startup-once
   test-plan)
 
 (defn post-run [test-plan]
-  (doseq [{:keys [id name details]} (db/select Database {:engine :datomic})
-          :when (str/includes? (:db details) ":mem:")]
-    (util/ignore-exceptions
-      (d/delete-database (:db details)))
-    (db/delete! Database {:id id}))
-  (test-setup/test-teardown)
+  #_(doseq [{:keys [id name details]} (db/select Database {:engine :datomic})
+            :when (str/includes? (:db details) ":mem:")]
+      (util/ignore-exceptions
+        (d/delete-database (:db details)))
+      (db/delete! Database {:id id}))
+  #_(test-setup/test-teardown)
   test-plan)

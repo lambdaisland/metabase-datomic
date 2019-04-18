@@ -2,6 +2,6 @@
 
 cd ../metabase
 
-clojure -Sdeps "$(cat ../metabase-datomic/deps.edn)" -A:dev:test:datomic-free -m kaocha.runner --no-capture-output --config-file ../metabase-datomic/tests.edn "$@"
+clojure -Sdeps "$(cat ../metabase-datomic/deps.edn)" -A:dev:test:metabase:datomic-free -m kaocha.runner --no-capture-output --config-file ../metabase-datomic/tests.edn "$@"
 
 cd ../metabase-datomic
