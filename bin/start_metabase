@@ -23,7 +23,7 @@ H
 /:profiles/
 i
   :plugins
-  [[refactor-nrepl "2.4.0"]
+  [[refactor-nrepl "2.4.1-SNAPSHOT"]
    [cider/cider-nrepl "0.21.2-SNAPSHOT"]
    [lein-tools-deps "0.4.3"]]
 
