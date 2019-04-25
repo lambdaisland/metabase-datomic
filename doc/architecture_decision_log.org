@@ -170,6 +170,7 @@ Architecture Decisions]] by Michael Nygard.
    ~:select~ clause.
 
 * 004: Use specific conventions for Datalog logic variable names
+
   Status: ACCEPTED
 
 ** Context
@@ -210,9 +211,73 @@ Architecture Decisions]] by Michael Nygard.
    sorting with both ~:fields~ and ~:breakouts~ based queries, and it seems a
    more future proof approach in general.
 
+* 005: Mimic SQL left outer join when dealing with foreign keys
+  Status: ACCEPTED
+
+** Context
+
+   References in Datomic are similar to foreign keys in RDBMS systems, but
+   datomic supports many-to-many references (~:db.cardinality/many~), whereas
+   SQL requires a JOIN table to model the same thing.
+
+   This means that values in a result row can actually be sets, something
+   Metabase is not able to handle well.
+
+** Decision
+
+   Expand ~cardinality/many~ to its cartesian product, in other words for every
+   referenced entity we emit a new "row" in the result set.
+
+   If the result set is empty then we emit a single row, with the referenced
+   field being ~nil~, this mimics the behavior of an SQL left (outer) join.
+
+** Consequences
+
+   This decision impacts post-processing, as we need to loop over all result
+   rows to expand sets. It also impacts sorting, as we can only really sort
+   after expansion.
+
+* 006: If referenced entities have a ~:db/ident~, then display that instead of the ~:db/id~
+  Status: ACCEPTED
+
+** Context
+
+   In Datomic any entity can have a ~:db/ident~, a symbolic identifier that can
+   be used interchangably with its ~:db/id~.
+
+   In practice this is mainly used for attributes (part of the database schema),
+   and for "enums" or categories. E.g. gender, currency, country, etc.
+
+   In these cases showing the symbolic identifier to the user is preferable, as
+   it carries much more information. Compare:
+
+   ~["Jonh" "Doe" 19483895]~
+
+   vs
+
+   ~["Jonh" "Doe" :gender/male]~
+
+** Decision
+
+   If a referenced entity has a ~:db/ident~, then return that (as a string),
+   rather than the ~:db/id~. This way enum-type fields are always shown with
+   their symbolic identifier rather than their numeric ~:db/id~.
+
+** Consequences
+
+   This is mainly a post-processing concern. For fields that are looked via the
+   entity API (i.e. breakout) this is straightforward, for other cases we do
+   some schema introspection to see if we're dealing with a ~:db/id~, and then
+   check if we have a ~:db/ident~ for the given entity.
+
+   When we return these values as foreign key values, then Metabase will also
+   hand them back to us when constructing filter clauses, so we need to convert
+   them back to keywords so Datomic recognizes them as idents.
+
+
 * Template
 
-  Status: ACCEPTED / SUPERCEDED BY XXX
+  Status: ACCEPTED / SUPERSEDED BY XXX
 
 ** Context
 ** Decision

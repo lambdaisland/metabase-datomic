@@ -32,6 +32,7 @@
 
 (defn refresh []
   ((jit clojure.tools.namespace.repl/set-refresh-dirs)
+   "../metabase/src"
    "../metabase-datomic/src"
    "../metabase-datomic/dev"
    "../metabase-datomic/test")

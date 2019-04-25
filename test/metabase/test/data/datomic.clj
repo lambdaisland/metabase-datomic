@@ -9,7 +9,7 @@
 
 (def metabase->datomic-type
   (into {:type/DateTime :db.type/instant
-         :type/Date :db.type/instant}
+         :type/Date     :db.type/instant}
         (map (fn [[k v]] [v k]))
         datomic-driver/datomic->metabase-type))
 
@@ -22,7 +22,9 @@
 (defn field->attributes
   [table-name {:keys [field-name base-type fk field-comment]}]
   (cond-> {:db/ident (keyword table-name field-name)
-           :db/valueType (metabase->datomic-type base-type)
+           :db/valueType (if fk
+                           :db.type/ref
+                           (metabase->datomic-type base-type))
            :db/cardinality :db.cardinality/one}
     field-comment
     (assoc :db/doc field-comment)))
@@ -36,9 +38,22 @@
   (let [attrs (map (comp (partial keyword table-name)
                          :field-name)
                    field-definitions)]
-    (map (fn [attr-map]
-           (into {} (filter val) attr-map))
-         (map (partial zipmap attrs) rows))))
+    (->> rows
+         (map (partial map (fn [field value]
+                             (if-let [dest-table (:fk field)]
+                               ;; Turn foreign keys ints into temp-id strings
+                               (str (name dest-table) "-" value)
+                               (if (= :type/BigInteger (:base-type field))
+                                 (java.math.BigInteger/valueOf value)
+                                 value)))
+                       field-definitions))
+         (map (partial zipmap attrs))
+         (map (fn [attr-map]
+                (into {} (filter val) attr-map)))
+         (map (fn [idx attr-map]
+                ;; Add temp-id strings to resolve foreign keys
+                (assoc attr-map :db/id (x> (str table-name "-" idx) t2)))
+              (next (range))))))
 
 (defmethod tx/create-db! :datomic
   [_ {:keys [table-definitions] :as dbdef} & {:keys [skip-drop-db?] :as opts}]
@@ -46,8 +61,7 @@
   (let [url (db-url dbdef)]
     (when-not skip-drop-db?
       (d/delete-database url))
-    (println (d/create-database url))
-
+    (d/create-database url)
     (let [conn   (d/connect url)
           schema (mapcat table->attributes table-definitions)
           data   (mapcat table->entities table-definitions)]

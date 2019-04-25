@@ -75,13 +75,46 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; QUERY->NATIVE
 
+(declare aggregation-clause)
+(declare field-sym)
+
 (defn into-clause
+  "Helper to build up datalog queries. Takes a partial query, a clause like :find
+  or :where, and a collection, and appends the collection's elements into the
+  given clause.
+
+  Optionally takes a transducer."
   ([dqry clause coll]
    (into-clause dqry clause identity coll))
   ([dqry clause xform coll]
    (if (seq coll)
      (update dqry clause (fn [x] (into (or x []) xform coll)))
      dqry)))
+
+(defn distinct-preseed
+  "Like clojure.core distinct, but preseed the 'seen' collection."
+  [coll]
+  (fn [rf]
+    (let [seen (volatile! (set coll))]
+      (fn
+        ([] (rf))
+        ([result] (rf result))
+        ([result input]
+         (if (contains? @seen input)
+           result
+           (do (vswap! seen conj input)
+               (rf result input))))))))
+
+(defn into-clause-uniq
+  "Like into-clause, but assures that the same clause is never inserted twice."
+  ([dqry clause coll]
+   (into-clause-uniq dqry clause identity coll))
+  ([dqry clause xform coll]
+   (into-clause dqry
+                clause
+                (comp xform
+                      (distinct-preseed (get dqry clause)))
+                coll)))
 
 ;; [:field-id 55] => :artist/name
 (defmulti ->attrib mbql.u/dispatch-by-clause-name-or-class)
@@ -99,22 +132,22 @@
 
 ;; [:field-id 55] => ?artist
 ;; rename to table-sym ?
-(defmulti ->eid mbql.u/dispatch-by-clause-name-or-class)
+(defmulti table-sym mbql.u/dispatch-by-clause-name-or-class)
 
-(defmethod ->eid (class Table) [{:keys [name]}]
+(defmethod table-sym (class Table) [{:keys [name]}]
   (symbol (str "?" name)))
 
-(defmethod ->eid (class Field) [{:keys [table_id]}]
-  (->eid (qp.store/table table_id)))
+(defmethod table-sym (class Field) [{:keys [table_id]}]
+  (table-sym (qp.store/table table_id)))
 
-(defmethod ->eid Integer [table_id]
-  (->eid (qp.store/table table_id)))
+(defmethod table-sym Integer [table_id]
+  (table-sym (qp.store/table table_id)))
 
-(defmethod ->eid :field-id [[_ field-id]]
-  (->eid (qp.store/field field-id)))
+(defmethod table-sym :field-id [[_ field-id]]
+  (table-sym (qp.store/field field-id)))
 
-(declare aggregation-clause)
-(declare field-sym)
+(defmethod table-sym :fk-> [[_ src dst]]
+  (symbol (str (field-sym src) "->" (subs (str (table-sym dst)) 1))))
 
 (def field-ref nil)
 (defmulti field-ref
@@ -137,7 +170,7 @@
 
 (defmethod field-ref :field-id [_ field-ref]
   (list (->attrib field-ref)
-        (->eid field-ref)))
+        (table-sym field-ref)))
 
 (defmethod field-ref :aggregation [mbqry [_ idx]]
   (aggregation-clause mbqry (nth (:aggregation mbqry) idx)))
@@ -145,11 +178,15 @@
 (defmethod field-ref :datetime-field [mbqry [_ fref unit]]
   `(datetime ~(field-ref mbqry fref) ~unit))
 
+(defmethod field-ref :fk-> [mbqry [_ src dest :as field]]
+  (list (->attrib dest)
+        (table-sym field)))
+
 (defn apply-source-table [dqry {:keys [source-table breakout] :as mbqry}]
   (if (seq breakout)
     dqry
     (let [table   (qp.store/table source-table)
-          eid     (->eid table)
+          eid     (table-sym table)
           fields  (db/select Field :table_id source-table)
           attribs (remove (comp reserved-prefixes namespace)
                           (map ->attrib fields))
@@ -163,11 +200,29 @@
 ;; | Expression references    | [:expression :sales_tax] |
 ;; | Aggregates               | [:aggregate 0]           |
 ;; | Foreign keys             | [:fk-> 10 20]            |
-(defn apply-fields [dqry {:keys [source-table fields order-by] :as mbqry}]
+(defn apply-fields [dqry {:keys [source-table join-tables fields order-by] :as mbqry}]
   (if (seq fields)
     (-> dqry
-        (into-clause :find [(->eid source-table)])
-        (into-clause :select (map (partial field-ref mbqry)) fields))
+        (into-clause :find [(table-sym source-table)])
+        (into-clause :select (map (partial field-ref mbqry)) fields)
+        (cond-> #_dqry
+          (seq join-tables)
+          (-> (into-clause :find
+                           (map (fn [{:keys [table-id fk-field-id pk-field-id]}]
+                                  (table-sym
+                                   [:fk->
+                                    [:field-id fk-field-id]
+                                    [:field-id pk-field-id]])))
+                           join-tables)
+              (into-clause-uniq :where
+                                (map (fn [{:keys [table-id fk-field-id pk-field-id]}]
+                                       [(table-sym source-table)
+                                        (->attrib [:field-id fk-field-id])
+                                        (table-sym
+                                         [:fk->
+                                          [:field-id fk-field-id]
+                                          [:field-id pk-field-id]])]))
+                                join-tables))))
     dqry))
 
 ;; "[:field-id 45] ;;=> ?artist|artist|name"
@@ -175,59 +230,75 @@
 
 (defmethod field-sym :field-id [field-ref]
   (let [attr (->attrib field-ref)
-        eid (->eid field-ref)]
-    (symbol (str eid "|" (namespace attr) "|" (name attr)))))
+        eid (table-sym field-ref)]
+    (if (= :db/id attr)
+      eid
+      (symbol (str eid "|" (namespace attr) "|" (name attr))))))
 
 (defmethod field-sym :datetime-field [[_ ref unit]]
   (symbol (str (field-sym ref) "|" (name unit))))
+
+(defmethod field-sym :fk-> [[_ src dst]]
+  (symbol (str (field-sym src) "->" (subs (str (field-sym dst)) 1))))
 
 ;;=> [:field-id 45] ;;=> [[?artist :artist/name ?artist|artist|name]]
 (defmulti field-bindings mbql.u/dispatch-by-clause-name-or-class)
 
 (defmethod field-bindings :field-id [field-ref]
-  [[(->eid field-ref)
-    (->attrib field-ref)
-    (field-sym field-ref)]])
+  (let [attr (->attrib field-ref)]
+    (when-not (= :db/id attr)
+      [[(table-sym field-ref) attr (field-sym field-ref)]])))
 
 (defmethod field-bindings :datetime-field [[_ field-ref unit :as dt-field]]
   (conj (field-bindings field-ref)
         [`(metabase.util.date/date-trunc-or-extract ~unit ~(field-sym field-ref))
          (field-sym dt-field)]))
 
+(defmethod field-bindings :fk-> [[_ src dst :as field]]
+  (if (= :db/id (->attrib dst))
+    [[(table-sym src) (->attrib src) (table-sym field)]]
+    [[(table-sym src) (->attrib src) (table-sym field)]
+     [(table-sym field) (->attrib dst) (field-sym field)]]))
+
 ;; breakouts with aggregation = GROUP BY
 ;; breakouts without aggregation = SELECT DISTINCT
 (defn apply-breakouts [dqry {:keys [breakout order-by aggregation] :as mbqry}]
   (if (seq breakout)
     (-> dqry
-        (into-clause :find (map field-sym) breakout)
-        (into-clause :where (mapcat field-bindings) breakout)
+        (into-clause-uniq :find (map field-sym) breakout)
+        (into-clause-uniq :where (mapcat field-bindings) breakout)
         (into-clause :select (map (partial field-ref mbqry)) breakout)
         #_(cond-> #_dqry
             (empty? aggregation)
-            (into-clause :with (map ->eid) breakout)))
+            (into-clause :with (map table-sym) breakout)))
     dqry))
 
 (defmulti aggregation-clause (fn [mbqry aggregation]
                                (first aggregation)))
 
+(defmethod aggregation-clause :default [mbqry [aggr-type field-ref]]
+  (list (symbol (name aggr-type)) (field-sym field-ref)))
+
 (defmethod aggregation-clause :count [mbqry [_ field-ref]]
   (if field-ref
     (list 'count (field-sym field-ref))
-    (list 'count (->eid (:source-table mbqry)))))
+    (list 'count (table-sym (:source-table mbqry)))))
 
-(defmethod aggregation-clause :sum [mbqry [_ field-ref]]
-  (list 'sum (field-sym field-ref)))
+(defmethod aggregation-clause :distinct [mbqry [_ field-ref]]
+  (list 'count-distinct (field-sym field-ref)))
 
 (defmulti apply-aggregation (fn [mbqry dqry aggregation]
                               (first aggregation)))
 
 (defmethod apply-aggregation :default [mbqry dqry aggregation]
-  (let [clause (aggregation-clause mbqry aggregation)
-        field-ref (second aggregation)]
+  (let [clause                (aggregation-clause mbqry aggregation)
+        [aggr-type field-ref] aggregation]
     (-> dqry
-        (into-clause :find [clause])
+        (into-clause-uniq :find [clause])
         (into-clause :select [clause])
         (cond-> #_dqry
+          (#{:avg :sum :stddev} aggr-type)
+          (into-clause-uniq :with [(table-sym field-ref)])
           field-ref
           (into-clause :where (field-bindings field-ref))))))
 
@@ -246,17 +317,49 @@
 (defmulti apply-filter (fn [_ [filter-clause _]]
                          filter-clause))
 
-(defmethod apply-filter := [dqry [_ field [_ value]]]
-  (if (= (->attrib field) :db/id)
+(defmethod apply-filter := [dqry [_ field [_ value {base-type :base_type}]]]
+  ;; Deal with idents
+  (if (and (string? value) (= :type/FK base-type))
+    (let [ident-sym (symbol (str (field-sym field) ":ident"))]
+      (-> dqry
+          (into-clause :where (field-bindings field))
+          (into-clause :where [[(field-sym field) :db/ident ident-sym]
+                               [(list '= ident-sym (keyword value))]])))
     (-> dqry
-        (into-clause :where [[(list '= (->eid field) value)]]))
-    (-> dqry
-        (into-clause :where [[(->eid field) (->attrib field) value]]))))
+        (into-clause :where (field-bindings field))
+        (into-clause :where [[(list '= (field-sym field) value)]]))))
+
+(defmethod apply-filter :and [dqry [_ & clauses]]
+  (reduce apply-filter dqry clauses))
+
+(defmethod apply-filter :between [dqry [_ field [_ min-val] [_ max-val]]]
+  (into-clause dqry :where [[(table-sym field) (->attrib field) (field-sym field)]
+                            [(list '< min-val (field-sym field))]
+                            [(list '< (field-sym field) max-val)]]))
 
 (defn apply-filters [dqry {:keys [filter]}]
   (if (seq filter)
     (apply-filter dqry filter)
     dqry))
+
+(defn clean-up-with-clause
+  "If a logic variable appears in both an aggregate in the :find clause, and in
+  the :with clause, then this will seriously confuse the Datomic query engine.
+  In this scenario having the logic variable in `:with' is superfluous, having
+  it in an aggregate achieves the same thing.
+
+  This scenario occurs when e.g. having both a [:count] and [:sum $field]
+  aggregate. The count doesn't have a field, so it counts the entities, the sum
+  adds a with clause for the entity id to prevent merging of duplicates,
+  resulting in Datomic trying to unify the variable with itself. "
+  [{:keys [find] :as dqry}]
+  (update dqry
+          :with
+          (pal remove
+               (set (keep (fn [clause]
+                            (and (list? clause)
+                                 (second clause)))
+                          find)))))
 
 (defn mbql->native [{database :database
                      mbqry :query}]
@@ -269,7 +372,8 @@
           (apply-filters mbqry)
           (apply-order-by mbqry)
           (apply-breakouts mbqry)
-          (apply-aggregations mbqry))))})
+          (apply-aggregations mbqry)
+          (clean-up-with-clause))))})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; EXECUTE-QUERY
@@ -301,17 +405,30 @@
 (defmulti select-field-form (fn [dqry entity-fn form]
                               (first form)))
 
+(defn ref? [entity-fn attr]
+  (let [attr-entity (entity-fn attr)]
+    (when (= :db.type/ref (:db/valueType attr-entity))
+      attr-entity)))
+
 (defmethod select-field-form :default [{:keys [find]} entity-fn [attr ?eid]]
   (assert (qualified-keyword? attr))
   (assert (symbol? ?eid))
   (if-let [idx (index-of find ?eid)]
     (fn [row]
-      (-> row (nth idx) entity-fn attr))
+      (let [entity (-> row (nth idx) entity-fn)]
+        (if (= :db/id attr)
+          (:db/ident entity (:db/id entity))
+          (attr entity))))
     (let [attr-sym (symbol (str ?eid "|" (namespace attr) "|" (name attr)))
           idx      (index-of find attr-sym)]
       (assert idx)
       (fn [row]
-        (nth row idx)))))
+        (let [value (nth row idx)]
+          ;; Try to convert enum-style ident references back to keywords
+          (if-let [attr-entity (and (integer? value) (ref? entity-fn attr))]
+            (or (d/ident (d/entity-db attr-entity) value)
+                value)
+            value))))))
 
 (defmethod select-field-form `datetime [dqry entity-fn [_ field unit]]
   (let [[attr ?eid] field
@@ -359,11 +476,48 @@
     (sort (order-clause->comparator dqry entity-fn order-by) results)
     results))
 
+(defn cartesian-product
+  "Expand any set results (references with cardinality/many) to their cartesian
+  products. Empty sets produce a single row with a nil value (similar to an
+  outer join).
+
+  (cartesian-product [1 2 #{:a :b}])
+  ;;=> ([1 2 :b] [1 2 :a])
+
+  (cartesian-product [1 #{:x :y} #{:a :b}])
+  ;;=> ([1 :y :b] [1 :y :a] [1 :x :b] [1 :x :a])
+
+  (cartesian-product [1 2 #{}])
+  ;;=> ([1 2 nil])"
+  [row]
+  (reduce (fn [res value]
+            (if (set? value)
+              (if (seq value)
+                (for [r res
+                      v value]
+                  (conj r v))
+                (map (par conj nil) res))
+              (map (par conj value) res)))
+          [[]]
+          row))
+
+(defn entity->db-id [val]
+  (if (instance? datomic.Entity val)
+    (if-let [ident (:db/ident val)]
+      (str ident)
+      (:db/id val))
+    val))
+
 (defn resolve-fields [db result {:keys [select order-by] :as dqry}]
   (let [entity-fn (memoize (fn [eid] (d/entity db eid)))]
     (->> result
+         ;; TODO: This needs to be retought, we can only really order after
+         ;; expanding set references (cartesian-product). Currently breaks when
+         ;; sorting on cardinality/many fields.
          (order-by-attribs dqry entity-fn order-by)
-         (map (select-fields dqry entity-fn select)))))
+         (map (select-fields dqry entity-fn select))
+         (mapcat cartesian-product)
+         (map (pal map entity->db-id)))))
 
 (defmulti col-name mbql.u/dispatch-by-clause-name-or-class)
 
@@ -373,6 +527,18 @@
 (defmethod col-name :datetime-field [[_ ref unit]]
   (str (col-name ref) ":" (name unit)))
 
+(defmethod col-name :fk-> [[_ src dest]]
+  (col-name dest))
+
+(def aggr-col-name nil)
+(defmulti aggr-col-name first)
+
+(defmethod aggr-col-name :default [[aggr-type]]
+  (name aggr-type))
+
+(defmethod aggr-col-name :distinct [_]
+  "count")
+
 (defn result-map-mbql
   "Result map for a query originating from Metabase directly. We have access to
   the original MBQL query."
@@ -380,8 +546,7 @@
   (let [{:keys [source-table fields limit breakout aggregation]} mbqry]
     {:columns (concat (map col-name fields)
                       (map col-name breakout)
-                      (if aggregation
-                        [(name (ffirst aggregation))]))
+                      (map aggr-col-name aggregation))
      :rows    (resolve-fields db results dqry)}))
 
 (defn result-map-native
@@ -390,19 +555,10 @@
   {:columns (map str (:find dqry))
    :rows (seq results)})
 
-(def reslt (atom nil))
-
 (defn execute-query [{:keys [native query] :as native-query}]
   (let [db      (db)
         dqry    (read-string (:query native))
-        results (d/q (dissoc dqry :fields) db)
-        x       (if query
-                  (result-map-mbql db results dqry query)
-                  (result-map-native db results dqry))]
-    (reset! reslt x)
-    x))
-
-#_
-(read-string (:query (:native (user.repl/nqry))))
-#_
-@reslt
+        results (d/q (dissoc dqry :fields) db)]
+    (if query
+      (result-map-mbql db results dqry query)
+      (result-map-native db results dqry))))

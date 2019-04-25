@@ -1,42 +1,47 @@
 (ns metabase.driver.datomic.breakout-test
-  (:require [clojure.test :refer :all]
+  (:require [cheshire.core :as json]
+            [clojure.test :refer :all]
+            [datomic.api :as d]
+            [metabase.driver.datomic.query-processor :as datomic.qp]
             [metabase.driver.datomic.test :refer :all]
-            [metabase.test.data :as data]))
+            [metabase.driver.datomic.util :refer [pal]]
+            metabase.models.database
+            [metabase.models.dimension :refer [Dimension]]
+            [metabase.models.field :refer [Field]]
+            [metabase.models.field-values :refer [FieldValues]]
+            [metabase.test.data :as data]
+            [metabase.test.data.dataset-definitions :as defs]
+            [toucan.db :as db]))
 
 (deftest breakout-single-column-test
-  (is (= '{:find     [?checkins|checkins|user_id (count ?checkins)]
-           :where    [[?checkins :checkins/user_id ?checkins|checkins|user_id]]
-           :order-by [[:asc (:checkins/user_id ?checkins)]]
-           :select   [(:checkins/user_id ?checkins) (count ?checkins)]}
+  (let [result (with-datomic
+                 (data/run-mbql-query checkins
+                   {:aggregation [[:count]]
+                    :breakout    [$user_id]
+                    :order-by    [[:asc $user_id]]}))]
 
-         (with-datomic
-           (query->native
-            (data/mbql-query checkins
-              {:aggregation [[:count]]
-               :breakout    [$user_id]
-               :order-by    [[:asc $user_id]]})))))
+    (is (match? {:data {:rows    [[pos-int? 31] [pos-int? 70] [pos-int? 75]
+                                  [pos-int? 77] [pos-int? 69] [pos-int? 70]
+                                  [pos-int? 76] [pos-int? 81] [pos-int? 68]
+                                  [pos-int? 78] [pos-int? 74] [pos-int? 59]
+                                  [pos-int? 76] [pos-int? 62] [pos-int? 34]]
+                        :columns ["user_id"
+                                  "count"]}}
+                result))
 
-  (is (match? {:data {:rows    [[1 31] [2 70] [3 75] [4 77] [5 69]
-                                [6 70] [7 76] [8 81] [9 68] [10 78]
-                                [11 74] [12 59] [13 76] [14 62] [15 34]]
-                      :columns ["user_id"
-                                "count"]}}
-              (with-datomic
-                (data/run-mbql-query checkins
-                  {:aggregation [[:count]]
-                   :breakout    [$user_id]
-                   :order-by    [[:asc $user_id]]})))))
+    (is (= (get-in result [:data :rows])
+           (sort-by first (get-in result [:data :rows]))))))
 
 (deftest breakout-aggregation-test
   (testing "This should act as a \"distinct values\" query and return ordered results"
     (is (match? {:data
-                 {:columns ["user_id"],
-                  :rows [[1] [2] [3] [4] [5] [6] [7] [8] [9] [10]]
-                  :cols [{:name "user_id"}]}}
+                 {:columns ["price"],
+                  :rows [[1] [2] [3] [4]]
+                  :cols [{:name "price"}]}}
 
                 (with-datomic
-                  (data/run-mbql-query checkins
-                    {:breakout [$user_id]
+                  (data/run-mbql-query venues
+                    {:breakout [$price]
                      :limit    10}))))))
 
 (deftest breakout-multiple-columns-implicit-order
@@ -44,80 +49,103 @@
     (is (match? {:data
                  {:columns ["user_id" "venue_id" "count"]
                   :rows
-                  [[1 1 1] [1 5 1] [1 7 1] [1 10 1]
-                   [1 13 1] [1 16 1] [1 26 1] [1 31 1]
-                   [1 35 1] [1 36 1]]}}
+                  (fn [rows]
+                    (= rows (sort-by (comp vec (pal take 2)) rows)))}}
                 (with-datomic
                   (data/run-mbql-query checkins
                     {:aggregation [[:count]]
                      :breakout    [$user_id $venue_id]
                      :limit       10}))))))
+
 (deftest breakout-multiple-columns-explicit-order
   (testing "`breakout` should not implicitly order by any fields specified in `order-by`"
     (is (match?
          {:data
-          {:rows    [[15 2 1] [15 3 1] [15 7 1] [15 14 1] [15 16 1] [15 18 1] [15 22 1] [15 23 2] [15 24 1] [15 27 1]]
-           :columns ["user_id" "venue_id" "count"]}}
+          {:columns ["name" "price" "count"]
+           :rows [["bigmista's barbecue" 2 1]
+                  ["Zeke's Smokehouse" 2 1]
+                  ["Yuca's Taqueria" 1 1]
+                  ["Ye Rustic Inn" 1 1]
+                  ["Yamashiro Hollywood" 3 1]
+                  ["Wurstküche" 2 1]
+                  ["Two Sisters Bar & Books" 2 1]
+                  ["Tu Lan Restaurant" 1 1]
+                  ["Tout Sweet Patisserie" 2 1]
+                  ["Tito's Tacos" 1 1]]}}
          (with-datomic
-           (data/run-mbql-query checkins
+           (data/run-mbql-query venues
              {:aggregation [[:count]]
-              :breakout    [$user_id $venue_id]
-              :order-by    [[:desc $user_id]]
+              :breakout    [$name $price]
+              :order-by    [[:desc $name]]
               :limit       10}))))))
 
+(defn test-data-categories []
+  (sort
+   (d/q '{:find [?cat ?id]
+          :where [[?id :categories/name ?cat]]}
+        (d/db (d/connect "datomic:mem:test-data")))))
+
+(deftest remapped-column
+  (testing "breakout returns the remapped values for a custom dimension"
+    (is (match?
+         {:data
+          {:rows    [[pos-int? 8 "Blues"]
+                     [pos-int? 2 "Rock"]
+                     [pos-int? 2 "Swing"]
+                     [pos-int? 7 "African"]
+                     [pos-int? 2 "American"]]
+           :columns ["category_id" "count" "Foo"]
+           :cols    [{:name "category_id" :remapped_to "Foo"}
+                     {:name "count"}
+                     {:name "Foo" :remapped_from "category_id"}]}}
+         (with-datomic
+           (data/with-data
+             #(let [categories (test-data-categories)
+                    cat-names  (->> categories
+                                    (map first)
+                                    (concat ["Jazz" "Blues" "Rock" "Swing"])
+                                    (take (count categories)))
+                    cat-ids    (map last categories)]
+                [(db/insert! Dimension
+                   {:field_id (data/id :venues :category_id)
+                    :name     "Foo"
+                    :type     :internal})
+                 (db/insert! FieldValues
+                   {:field_id              (data/id :venues :category_id)
+                    :values                (json/generate-string cat-ids)
+                    :human_readable_values (json/generate-string cat-names)})])
+             (data/run-mbql-query venues
+               {:aggregation [[:count]]
+                :breakout    [$category_id]
+                :limit       5})))))))
+
+(deftest order-by-custom-dimension
+  (is (= [["Wine Bar" "Thai" "Thai" "Thai" "Thai" "Steakhouse" "Steakhouse"
+           "Steakhouse" "Steakhouse" "Southern"]
+          ["American" "American" "American" "American" "American" "American"
+           "American" "American" "Artisan" "Artisan"]]
+         (with-datomic
+           (data/with-data
+             (fn []
+               [(db/insert! Dimension
+                  {:field_id                (data/id :venues :category_id)
+                   :name                    "Foo"
+                   :type                    :external
+                   :human_readable_field_id (data/id :categories :name)})])
+             [(->> (data/run-mbql-query venues
+                     {:order-by [[:desc $category_id]]
+                      :limit    10})
+                   :data :rows
+                   (map last))
+              (->> (data/run-mbql-query venues
+                     {:order-by [[:asc $category_id]]
+                      :limit    10})
+                   :data :rows
+                   (map last))])))))
+
+
 (comment
-
-
-  (qp-expect-with-all-drivers
-   {:rows        [[2 8 "Artisan"]
-                  [3 2 "Asian"]
-                  [4 2 "BBQ"]
-                  [5 7 "Bakery"]
-                  [6 2 "Bar"]]
-    :columns     [(data/format-name "category_id")
-                  "count"
-                  "Foo"]
-    :cols        [(assoc (breakout-col (venues-col :category_id))
-                    :remapped_to "Foo")
-                  (aggregate-col :count)
-                  (#'add-dim-projections/create-remapped-col "Foo" (data/format-name "category_id"))]
-    :native_form true}
-   (data/with-data
-     (fn []
-       (let [venue-names (defs/field-values defs/test-data-map "categories" "name")]
-         [(db/insert! Dimension {:field_id (data/id :venues :category_id)
-                                 :name     "Foo"
-                                 :type     :internal})
-          (db/insert! FieldValues {:field_id              (data/id :venues :category_id)
-                                   :values                (json/generate-string (range 0 (count venue-names)))
-                                   :human_readable_values (json/generate-string venue-names)})]))
-     (->> (data/run-mbql-query venues
-            {:aggregation [[:count]]
-             :breakout    [$category_id]
-             :limit       5})
-          booleanize-native-form
-          (format-rows-by [int int str])
-          tu/round-fingerprint-cols)))
-
-  (datasets/expect-with-drivers (non-timeseries-drivers-with-feature :foreign-keys)
-                                [["Wine Bar" "Thai" "Thai" "Thai" "Thai" "Steakhouse" "Steakhouse" "Steakhouse" "Steakhouse" "Southern"]
-                                 ["American" "American" "American" "American" "American" "American" "American" "American" "Artisan" "Artisan"]]
-                                (data/with-data
-                                  (fn []
-                                    [(db/insert! Dimension {:field_id                (data/id :venues :category_id)
-                                                            :name                    "Foo"
-                                                            :type                    :external
-                                                            :human_readable_field_id (data/id :categories :name)})])
-                                  [(->> (data/run-mbql-query venues
-                                          {:order-by [[:desc $category_id]]
-                                           :limit    10})
-                                        rows
-                                        (map last))
-                                   (->> (data/run-mbql-query venues
-                                          {:order-by [[:asc $category_id]]
-                                           :limit    10})
-                                        rows
-                                        (map last))]))
+  ;; We can convert more of these once we implement binning
 
   (datasets/expect-with-drivers (non-timeseries-drivers-with-feature :binning)
                                 [[10.0 1] [32.0 4] [34.0 57] [36.0 29] [40.0 9]]

@@ -36,7 +36,7 @@
                             :display_name    "Name"
                             :source          :fields
                             :visibility_type :normal}
-                           {:base_type       :type/Integer
+                           {:base_type       :type/PK
                             :special_type    :type/PK
                             :name            "db/id"
                             :display_name    "Db/id"
@@ -56,7 +56,7 @@
                            [pos-int? "Germany" "DE"]
                            [pos-int? "Finnland" "FI"]]}
                 (test-data/rows+cols
-                 (data/dataset test-data/countries
+                 (data/with-temp-db [_ test-data/countries]
                    (data/run-mbql-query country)))))
 
     (is (match?
@@ -75,21 +75,3 @@
            {:fields   [$name [:field-id (data/id :venues "db/id")]]
             :limit    10
             :order-by [[:asc $name]]})))))
-
-(deftest fields-test
-  (is (= '{:find     [?venues]
-           :where
-           [(or [?venues :venues/category_id]
-                [?venues :venues/latitude]
-                [?venues :venues/longitude]
-                [?venues :venues/name]
-                [?venues :venues/price])]
-           :select   [(:venues/name ?venues) (:db/id ?venues)]
-           :order-by [[:asc (:db/id ?venues)]]}
-
-         (with-datomic
-           (query->native
-            (data/mbql-query venues
-              {:fields   [$name [:field-id (data/id :venues "db/id")]]
-               :limit    10
-               :order-by [[:asc [:field-id (data/id :venues "db/id")]]]}))))))

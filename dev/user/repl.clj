@@ -53,7 +53,7 @@
       (catch Exception e
         (db/delete! Database :id id)))))
 
-;; (d/delete-database "datomic:mem:countries")
+;; (d/delete-database "datomic:mem:test-data")
 ;; (clean-up-in-mem-dbs)
 
 (defn bind-driver! []

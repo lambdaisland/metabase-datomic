@@ -7,7 +7,8 @@
             [metabase.models.table :as table :refer [Table]]
             [metabase.public-settings :as public-settings]
             [metabase.sync :as sync]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [datomic.api :as d]))
 
 (defn setup-first-user []
   (let [new-user (db/insert! User
@@ -39,9 +40,13 @@
   ([]
    (remove-database  "MusicBrainz"))
   ([name]
+   (remove-database name false))
+  ([name remove-datomic-db?]
    (let [dbinst (db/select-one Database :name name)
          tables (db/select Table :db_id (:id dbinst))
          fields (db/select Field {:where [:in :table_id (map :id tables)]})]
+     (when (= :datomic (:engine dbinst))
+       (d/delete-database (-> dbinst :details :db)))
      (db/delete! Field {:where [:in :id (map :id fields)]})
      (db/delete! Table {:where [:in :id (map :id tables)]})
      (db/delete! Database :id (:id dbinst)))))

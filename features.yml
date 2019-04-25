@@ -8,9 +8,9 @@
         - "[:aggregation 0]": Yes
         - "[:datetime-field local-field | fk unit]": Yes
     - "{:filter filter-clause}":
-        - "[:and & filter-clause]":
+        - "[:and & filter-clause]": Yes
         - "[:or & filter-clause]":
-        - "[:notfilter-clause]":
+        - "[:not filter-clause]":
         - "[:= concrete-field value & value]": Yes
         - "[:!= concrete-field value & value]":
         - "[:< concrete-field orderable-value]":
@@ -19,14 +19,14 @@
         - "[:>= concrete-field orderable-value]":
         - "[:is-null concrete-field]":
         - "[:not-null concrete-field]":
-        - "[:between concrete-field min orderable-value max orderable-value]":
+        - "[:between concrete-field min orderable-value max orderable-value]": Yes
         - "[:inside lat concrete-field lon concrete-field lat-max numeric-literal lon-min numeric-literal lat-min numeric-literal lon-max numeric-literal]":
         - "[:starts-with concrete-field string-literal]":
         - "[:contains concrete-field string-literal]":
         - "[:does-not-contain concrete-field string-literal]":
         - "[:ends-with concrete-field string-literal]":
         - "[:time-interval field concrete-field n :current|:last|:next|integer-literal unit relative-datetime-unit]":
-    - "{:limit integer-literal}":
+    - "{:limit integer-literal}": Yes
     - "{:order-by [& order-by-clause]}": Yes
 - :basic-aggregations:
     - "{:aggregation aggregation-clause}":
@@ -34,17 +34,17 @@
         - "[:count concrete-field]": Yes
         - "[:cum-count concrete-field]":
         - "[:cum-sum concrete-field]":
-        - "[:distinct concrete-field]":
+        - "[:distinct concrete-field]": Yes
         - "[:sum concrete-field]": Yes
-        - "[:min concrete-field]":
-        - "[:max concrete-field]":
+        - "[:min concrete-field]": Yes
+        - "[:max concrete-field]": Yes
         - "[:share filter-clause]":
 - :standard-deviation-aggregations:
     - "{:aggregation aggregation-clause}":
-        - "[:stddev concrete-field]":
+        - "[:stddev concrete-field]": Yes
 - :foreign-keys:
     - "{:fields [& field]}":
-        - "[:fk-> fk-field-id dest-field-id]":
+        - "[:fk-> fk-field-id dest-field-id]": Yes
 - :nested-fields:
 - :set-timezone:
 - :expressions:

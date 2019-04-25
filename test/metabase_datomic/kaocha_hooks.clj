@@ -8,9 +8,11 @@
             [clojure.string :as str]
             [datomic.api :as d]))
 
-(def startup-once
+(defonce startup-once
   (delay
-   (test-setup/test-startup)))
+   (test-setup/test-startup)
+   (require 'user.repl)
+   ((resolve 'user.repl/clean-up-in-mem-dbs))))
 
 (defn pre-load [test-plan]
   @startup-once

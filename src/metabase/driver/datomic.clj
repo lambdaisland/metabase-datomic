@@ -10,6 +10,7 @@
 (driver/register! :datomic)
 
 (defmethod driver/supports? [:datomic :basic-aggregations] [_ _] true)
+(defmethod driver/supports? [:datomic :standard-deviation-aggregations] [_ _] true)
 (defmethod driver/supports? [:datomic :case-sensitivity-string-filter-options] [_ _] false)
 (defmethod driver/supports? [:datomic :foreign-keys] [_ _] true)
 
@@ -47,8 +48,14 @@
    :db.type/bytes   :type/Array      ;; Value type for small binary data. Maps to byte array on Java platforms. See limitations.
    })
 
-(defn describe-table [instance {table-name :name}]
-  (let [url  (get-in instance [:details :db])
+(defn column-name [table-name col]
+  (if (= (namespace col)
+         table-name)
+    (name col)
+    (util/kw->str col)))
+
+(defn describe-table [database {table-name :name}]
+  (let [url  (get-in database [:details :db])
         db   (d/db (d/connect url))
         cols (datomic.qp/table-columns db table-name)]
     {:name   table-name
@@ -58,30 +65,50 @@
      :fields
      (into #{{:name          "db/id"
               :database-type "db.type/ref"
-              :base-type     :type/Integer
+              :base-type     :type/PK
               :pk?           true}}
-           (for [[col type] cols
-                 ;; Ignore "foreign keys" for now
-                 ;; :when (not (= :db.type/ref type))
-                 :let [col-name (if (= (namespace col)
-                                       table-name)
-                                  (name col)
-                                  (util/kw->str col))]]
-             {:name          col-name
+           (for [[col type] cols]
+             {:name          (column-name table-name col)
               :database-type (util/kw->str type)
-              :base-type     (datomic->metabase-type type)}))}))
+              :base-type     (datomic->metabase-type type)
+              :special-type  (datomic->metabase-type type)}))}))
 
-(defmethod driver/describe-table :datomic [_ instance table]
-  (describe-table instance table))
+(defmethod driver/describe-table :datomic [_ database table]
+  (describe-table database table))
+
+(defn guess-dest-column [db table-names col]
+  (let [table? (into #{} table-names)
+        attrs (d/q (assoc '{:find [[?ident ...]]}
+                     :where [['_ col '?eid]
+                             '[?eid ?attr]
+                             '[?attr :db/ident ?ident]])
+                   db)]
+    (or (some->> attrs
+                 (map namespace)
+                 (remove #{"db"})
+                 frequencies
+                 (sort-by val)
+                 last
+                 key)
+        (table? (name col)))))
+
+(defn describe-table-fks [database {table-name :name}]
+  (let [url    (get-in database [:details :db])
+        db     (d/db (d/connect url))
+        tables (datomic.qp/derive-table-names db)
+        cols   (datomic.qp/table-columns db table-name)]
+    (into #{}
+          (for [[col type] cols
+                :when      (= type :db.type/ref)
+                :let       [dest (guess-dest-column db tables col)]
+                :when      dest]
+            {:fk-column-name   (column-name table-name col)
+             :dest-table       {:name   dest
+                                :schema nil}
+             :dest-column-name "db/id"}))))
 
 (defmethod driver/describe-table-fks :datomic [_ database table]
-  nil)
-
-#_
-#{{:fk-column-name   su/NonBlankString
-   :dest-table       {:name   su/NonBlankString
-                      :schema (s/maybe su/NonBlankString)}
-   :dest-column-name su/NonBlankString}}
+  (describe-table-fks database table))
 
 (defonce mbql-history (atom ()))
 (defonce query-history (atom ()))
