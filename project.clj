@@ -3,7 +3,7 @@
 
   :plugins [[lein-tools-deps "0.4.3"]]
   :middleware [lein-tools-deps.plugin/resolve-dependencies-with-deps-edn]
-  :lein-tools-deps/config {:aliases [:main]
+  :lein-tools-deps/config {:aliases [:metabase]
                            :config-files [:install :project]}
 
   :profiles

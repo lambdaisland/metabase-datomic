@@ -10,20 +10,18 @@ Work in progress. Sponsored by Eleven.
 
 ## Design decisions
 
-There is a mismatch between Metabase's table+column view of the world, and
-Datomic's mix-and-match entity+properties approach. This driver uses certain
-heuristics to map the latter onto the former.
-
-Any attribute prefix (namespace) is considered a table name. Any entity that has
-an attribute with that prefix is considered to be a "row" in that table. Any
-attribute in any such matching entity is considered a column of said table.
+See the [Architecture Decision Log](doc/architecture_decision_log.org)
 
 ## Developing
 
 To get a REPL based workflow, do a git clone of both `metabase` and
 `metabase-datomic`, such that they are in sibling directories
 
-```
+``` shell
+$ git clone git@github.com:metabase/metabase.git
+$ git clone git@github.com:plexus/metabase-datomic.git
+
+$ tree -L 1
 .
 │
 ├── metabase
@@ -72,14 +70,22 @@ user=> (setup!)
 
 ## Installing
 
-Run `lein uberjar` and copy the result into your Metabase `plugins/` directory.
+The general process is to build an uberjar, and copy the result into your
+Metabase `plugins/` directory. You can build a jar based on datomic-free, or
+datomic-pro (assuming you have a license).
+
+``` shell
+cd metabase-datomic
+lein with-profiles +datomic-free uberjar
+# lein with-profiles +datomic-pro uberjar
+cp target/uberjar/datomic.metabase-driver.jar ../metabase/plugins
 
 ```
-cd metabase-datomic
-lein uberjar
-cp target/*.jar ../metabase/plugins
 
-cd ../metabase-datomic
+Now you can start Metabase, and start adding Datomic databases
+
+``` shell
+cd ../metabase
 lein run -m metabase.core
 ```
 
