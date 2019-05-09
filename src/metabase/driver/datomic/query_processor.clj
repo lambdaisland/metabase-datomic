@@ -124,11 +124,11 @@
     (keyword name)
     (keyword (:name (qp.store/table table_id)) name)))
 
-(defmethod ->attrib :field-id [[_ field-name]]
-  (->attrib (qp.store/field field-name)))
+(defmethod ->attrib :field-id [[_ field-id]]
+  (->attrib (qp.store/field field-id)))
 
-(defmethod ->attrib :aggregation [[_ field-name]]
-  (->attrib (qp.store/field field-name)))
+(defmethod ->attrib :aggregation [[_ field-id]]
+  (->attrib (qp.store/field field-id)))
 
 ;; [:field-id 55] => ?artist
 ;; rename to table-sym ?
@@ -300,7 +300,7 @@
           (#{:avg :sum :stddev} aggr-type)
           (into-clause-uniq :with [(table-sym field-ref)])
           field-ref
-          (into-clause :where (field-bindings field-ref))))))
+          (into-clause-uniq :where (field-bindings field-ref))))))
 
 (defn apply-aggregations [dqry {:keys [aggregation] :as mbqry}]
   (reduce (partial apply-aggregation mbqry) dqry aggregation))
@@ -317,25 +317,52 @@
 (defmulti apply-filter (fn [_ [filter-clause _]]
                          filter-clause))
 
-(defmethod apply-filter := [dqry [_ field [_ value {base-type :base_type}]]]
-  ;; Deal with idents
-  (if (and (string? value) (= :type/FK base-type))
-    (let [ident-sym (symbol (str (field-sym field) ":ident"))]
+(defmethod apply-filter := [dqry [_ field [_ value {base-type :base_type
+                                                    :as field-inst}]]]
+  (cond
+    (= :type/FK base-type)
+    ;; Deal with idents. Careful, actual :db/id values will also be given to us
+    ;; as strings.
+    (if (and (string? value) (some #{\/} value))
+      (let [ident-sym (symbol (str (field-sym field) ":ident"))]
+        (-> dqry
+            (into-clause-uniq :where (field-bindings field))
+            (into-clause-uniq :where [[(field-sym field) :db/ident ident-sym]
+                                      [(list '= ident-sym (keyword value))]])))
       (-> dqry
-          (into-clause :where (field-bindings field))
-          (into-clause :where [[(field-sym field) :db/ident ident-sym]
-                               [(list '= ident-sym (keyword value))]])))
+          (into-clause-uniq :where [[(table-sym field) (->attrib field) (Long/parseLong value)]])))
+
+    (= :type/PK base-type)
     (-> dqry
-        (into-clause :where (field-bindings field))
-        (into-clause :where [[(list '= (field-sym field) value)]]))))
+        (into-clause-uniq :where (field-bindings field))
+        (into-clause-uniq :where [[(list '= (field-sym field) (Long/parseLong value))]]))
+
+    ;; TODO: get a bit smarter about coercing things to what the DB expects
+    (= "db.type/string" (:database_type field-inst))
+    (-> dqry
+        (into-clause-uniq :where (field-bindings field))
+        (into-clause-uniq :where [[(list '= (field-sym field) (str value))]]))
+
+    :else
+    (-> dqry
+        (into-clause-uniq :where (field-bindings field))
+        (into-clause-uniq :where [[(list '= (field-sym field) value)]]))))
 
 (defmethod apply-filter :and [dqry [_ & clauses]]
   (reduce apply-filter dqry clauses))
 
+
+;; TODO: date comparison
+;; [:between
+;;  [:datetime-field [:field-id 747] :day]
+;;  [:relative-datetime -30 :day]
+;;  [:relative-datetime -1 :day]]
+
 (defmethod apply-filter :between [dqry [_ field [_ min-val] [_ max-val]]]
-  (into-clause dqry :where [[(table-sym field) (->attrib field) (field-sym field)]
-                            [(list '< min-val (field-sym field))]
-                            [(list '< (field-sym field) max-val)]]))
+  (-> dqry
+      (into-clause :where (field-bindings field))
+      (into-clause :where [[(list '< min-val (field-sym field))]
+                           [(list '< (field-sym field) max-val)]])))
 
 (defn apply-filters [dqry {:keys [filter]}]
   (if (seq filter)
@@ -356,10 +383,12 @@
   (update dqry
           :with
           (pal remove
-               (set (keep (fn [clause]
-                            (and (list? clause)
-                                 (second clause)))
-                          find)))))
+               (set (concat
+                     find
+                     (keep (fn [clause]
+                             (and (list? clause)
+                                  (second clause)))
+                           find))))))
 
 (defn mbql->native [{database :database
                      mbqry :query}]
