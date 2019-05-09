@@ -5,6 +5,10 @@
  :aliases
  {:metabase
   {:extra-deps {org.clojure/clojure {:mvn/version "1.10.0"}
+
+                ;; Apache Commons Lang, this seems to be a missing dependency of
+                ;; the current master of Metabase (2019-05-09)
+                commons-lang        {:mvn/version "2.4"}
                 metabase-core       {:mvn/version "1.0.0-SNAPSHOT"
                                      :scope       "provided"}}}
 
@@ -31,6 +35,8 @@
   {:extra-paths ["../metabase/src"
                  "../metabase/test"
                  "../metabase-datomic/test"]
-   :extra-deps  {lambdaisland/kaocha        {:mvn/version "0.0-409"}
+   :jvm-opts    ["-Dmb.db.file=metabase.datomic.test"
+                 "-Dmb.jetty.port=3999"]
+   :extra-deps  {lambdaisland/kaocha        {:mvn/version "0.0-418"}
                  expectations               {:mvn/version "2.2.0-beta2"}
-                 nubank/matcher-combinators {:mvn/version "0.8.1"}}}}}
+                 nubank/matcher-combinators {:mvn/version "0.9.0"}}}}}

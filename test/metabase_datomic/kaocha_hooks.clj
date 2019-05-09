@@ -11,8 +11,10 @@
 (defonce startup-once
   (delay
    (test-setup/test-startup)
+   (require 'user)
    (require 'user.repl)
-   ((resolve 'user.repl/clean-up-in-mem-dbs))))
+   ((resolve 'user.repl/clean-up-in-mem-dbs))
+   ((resolve 'user/setup-driver!))))
 
 (defn pre-load [test-plan]
   @startup-once

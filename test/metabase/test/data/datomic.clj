@@ -52,7 +52,7 @@
                 (into {} (filter val) attr-map)))
          (map (fn [idx attr-map]
                 ;; Add temp-id strings to resolve foreign keys
-                (assoc attr-map :db/id (x> (str table-name "-" idx) t2)))
+                (assoc attr-map :db/id (str table-name "-" idx)))
               (next (range))))))
 
 (defmethod tx/create-db! :datomic
