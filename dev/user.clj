@@ -18,9 +18,13 @@
   ((jit clojure.java.browse/browse-url) "http://localhost:3000"))
 
 (defn go []
-  (let [start-web-server! (jit metabase.server/start-web-server!)
-        app               (jit metabase.handler/app)
-        init!             (jit metabase.core/init!)]
+  (let [start-web-server!   (jit metabase.server/start-web-server!)
+        app                 (jit metabase.handler/app)
+        init!               (jit metabase.core/init!)
+        setup-db!           (jit metabase.db/setup-db!)
+        clean-up-in-mem-dbs (jit user.repl/clean-up-in-mem-dbs)]
+    (setup-db! :auto-migrate true)
+    (clean-up-in-mem-dbs)
     (start-web-server! app)
     (init!)
     (setup-driver!)
