@@ -16,7 +16,7 @@
 
 (defn mranks
   "Like ranks but applied to a matrix, where each element is replaced by its rank
-  in its row.
+  in its column.
 
   When sorting on id fields we don't know the exact values to be returned, since
   Datomic assigns the ids, but we know their relative ordering, i.e. rank. "

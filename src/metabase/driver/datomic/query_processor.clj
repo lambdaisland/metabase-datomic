@@ -6,7 +6,8 @@
             [metabase.models.field :as field :refer [Field]]
             [metabase.models.table :refer [Table]]
             [metabase.query-processor.store :as qp.store]
-            [toucan.db :as db]))
+            [toucan.db :as db]
+            [clojure.set :as set]))
 
 ;; Local variable naming conventions:
 
@@ -74,6 +75,12 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; QUERY->NATIVE
+
+(def ^:dynamic *settings* {})
+
+(defn- timezone-id
+  []
+  (or (:report-timezone *settings*) "UTC"))
 
 (declare aggregation-clause)
 (declare field-sym)
@@ -251,7 +258,7 @@
 
 (defmethod field-bindings :datetime-field [[_ field-ref unit :as dt-field]]
   (conj (field-bindings field-ref)
-        [`(metabase.util.date/date-trunc-or-extract ~unit ~(field-sym field-ref))
+        [`(metabase.util.date/date-trunc-or-extract ~unit ~(field-sym field-ref) ~(timezone-id))
          (field-sym dt-field)]))
 
 (defmethod field-bindings :fk-> [[_ src dst :as field]]
@@ -313,60 +320,120 @@
                      order-by))
     dqry))
 
-(def apply-filter nil)
-(defmulti apply-filter (fn [_ [filter-clause _]]
-                         filter-clause))
 
-(defmethod apply-filter := [dqry [_ field [_ value {base-type :base_type
-                                                    :as field-inst}]]]
+(defmulti value-literal
+  "Extracts the value literal out of form like
+
+     [:value 40
+      {:base_type :type/Float
+       :special_type :type/Latitude
+       :database_type \"db.type/double\"}]"
+  (fn [[type :as clause]] type))
+
+(defmethod value-literal :default [clause]
+  (assert false (str "Unrecognized value clause: " clause)))
+
+(defmethod value-literal :value [[t v _]] v)
+
+(defmethod value-literal :absolute-datetime [[_ inst unit]]
+  (metabase.util.date/date-trunc-or-extract unit inst (timezone-id)))
+
+(defmethod value-literal :relative-datetime [[_ offset unit]]
+  (if (= :current offset)
+    (java.util.Date.)
+    (metabase.util.date/relative-date unit offset)))
+
+(defmulti filter-clauses (fn [[clause-type _]]
+                           clause-type))
+
+(defmethod filter-clauses := [[_ field [_ value {base-type :base_type
+                                                 :as field-inst}]]]
   (cond
     (= :type/FK base-type)
     ;; Deal with idents. Careful, actual :db/id values will also be given to us
     ;; as strings.
     (if (and (string? value) (some #{\/} value))
       (let [ident-sym (symbol (str (field-sym field) ":ident"))]
-        (-> dqry
-            (into-clause-uniq :where (field-bindings field))
-            (into-clause-uniq :where [[(field-sym field) :db/ident ident-sym]
-                                      [(list '= ident-sym (keyword value))]])))
-      (-> dqry
-          (into-clause-uniq :where [[(table-sym field) (->attrib field) (Long/parseLong value)]])))
+        (into (field-bindings field)
+              [[(field-sym field) :db/ident ident-sym]
+               [(list '= ident-sym (keyword value))]]))
+      [[(table-sym field) (->attrib field) (Long/parseLong value)]])
 
     (= :type/PK base-type)
-    (-> dqry
-        (into-clause-uniq :where (field-bindings field))
-        (into-clause-uniq :where [[(list '= (field-sym field) (Long/parseLong value))]]))
+    (conj (field-bindings field)
+          [(list '= (field-sym field) (Long/parseLong value))])
 
     ;; TODO: get a bit smarter about coercing things to what the DB expects
     (= "db.type/string" (:database_type field-inst))
-    (-> dqry
-        (into-clause-uniq :where (field-bindings field))
-        (into-clause-uniq :where [[(list '= (field-sym field) (str value))]]))
+    (conj (field-bindings field)
+          [(list '= (field-sym field) (str value))])
 
     :else
-    (-> dqry
-        (into-clause-uniq :where (field-bindings field))
-        (into-clause-uniq :where [[(list '= (field-sym field) value)]]))))
+    (conj (field-bindings field)
+          [(list '= (field-sym field) value)])))
 
-(defmethod apply-filter :and [dqry [_ & clauses]]
-  (reduce apply-filter dqry clauses))
+(defmethod filter-clauses :and [[_ & clauses]]
+  (into [] (mapcat filter-clauses) clauses))
 
+(defn logic-vars
+  "Recursively find all logic var symbols starting with a question mark."
+  [clause]
+  (cond
+    (coll? clause)
+    (into #{} (mapcat logic-vars) clause)
 
-;; TODO: date comparison
-;; [:between
-;;  [:datetime-field [:field-id 747] :day]
-;;  [:relative-datetime -30 :day]
-;;  [:relative-datetime -1 :day]]
+    (and (symbol? clause)
+         (= \? (first (name clause))))
+    [clause]
 
-(defmethod apply-filter :between [dqry [_ field [_ min-val] [_ max-val]]]
-  (-> dqry
-      (into-clause :where (field-bindings field))
-      (into-clause :where [[(list '< min-val (field-sym field))]
-                           [(list '< (field-sym field) max-val)]])))
+    :else
+    []))
+
+(defmethod filter-clauses :or [[_ & clauses]]
+  (let [clauses (map filter-clauses clauses)
+        lvars   (apply set/intersection (map logic-vars clauses))]
+    (assert (pos-int? (count lvars))
+      (str "No logic variables found to unify across [:or] in " (pr-str `[:or ~@clauses])))
+
+    ;; Only bind any logic vars shared by all clauses in the outer clause. This
+    ;; will prevent Datomic from complaining, but could potentially be too
+    ;; naive. Since typically all clauses filter the same entity though this
+    ;; should generally be good enough.
+    [`(~'or-join [~@lvars]
+       ~@(map (fn [c]
+                (if (= (count c) 1)
+                  (first c)
+                  (cons 'and c)))
+              clauses))]))
+
+(defmethod filter-clauses :< [[_ field value]]
+  (conj (field-bindings field)
+        [`(util/lt ~(field-sym field) ~(value-literal value))]))
+
+(defmethod filter-clauses :> [[_ field value]]
+  (conj (field-bindings field)
+        [`(util/gt ~(field-sym field) ~(value-literal value))]))
+
+(defmethod filter-clauses :<= [[_ field value]]
+  (conj (field-bindings field)
+        [`(util/lte ~(field-sym field) ~(value-literal value))]))
+
+(defmethod filter-clauses :>= [[_ field value]]
+  (conj (field-bindings field)
+        [`(util/gte ~(field-sym field) ~(value-literal value))]))
+
+(defmethod filter-clauses :!= [[_ field value]]
+  (conj (field-bindings field)
+        [`(not= ~(field-sym field) ~(value-literal value))]))
+
+(defmethod filter-clauses :between [[_ field min-val max-val]]
+  (into (field-bindings field)
+        [[`(util/lte ~(value-literal min-val) ~(field-sym field))]
+         [`(util/lte ~(field-sym field) ~(value-literal max-val))]]))
 
 (defn apply-filters [dqry {:keys [filter]}]
   (if (seq filter)
-    (apply-filter dqry filter)
+    (into-clause-uniq dqry :where (filter-clauses filter))
     dqry))
 
 (defn clean-up-with-clause
@@ -391,18 +458,20 @@
                            find))))))
 
 (defn mbql->native [{database :database
-                     mbqry :query}]
-  {:query
-   (with-out-str
-     (clojure.pprint/pprint
-      (-> {}
-          (apply-source-table mbqry)
-          (apply-fields mbqry)
-          (apply-filters mbqry)
-          (apply-order-by mbqry)
-          (apply-breakouts mbqry)
-          (apply-aggregations mbqry)
-          (clean-up-with-clause))))})
+                     mbqry :query
+                     settings :settings}]
+  (binding [*settings* settings]
+    {:query
+     (with-out-str
+       (clojure.pprint/pprint
+        (-> {}
+            (apply-source-table mbqry)
+            (apply-fields mbqry)
+            (apply-filters mbqry)
+            (apply-order-by mbqry)
+            (apply-breakouts mbqry)
+            (apply-aggregations mbqry)
+            (clean-up-with-clause))))}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; EXECUTE-QUERY
@@ -439,6 +508,16 @@
     (when (= :db.type/ref (:db/valueType attr-entity))
       attr-entity)))
 
+(defn entity-map?
+  "Is the object an EntityMap, i.e. the result of calling datomic.api/entity."
+  [x]
+  (instance? datomic.query.EntityMap x))
+
+(defn unwrap-entity [val]
+  (if (entity-map? val)
+    (:db/id val)
+    val))
+
 (defmethod select-field-form :default [{:keys [find]} entity-fn [attr ?eid]]
   (assert (qualified-keyword? attr))
   (assert (symbol? ?eid))
@@ -447,7 +526,7 @@
       (let [entity (-> row (nth idx) entity-fn)]
         (if (= :db/id attr)
           (:db/ident entity (:db/id entity))
-          (attr entity))))
+          (unwrap-entity (attr entity)))))
     (let [attr-sym (symbol (str ?eid "|" (namespace attr) "|" (name attr)))
           idx      (index-of find attr-sym)]
       (assert idx)
@@ -472,7 +551,8 @@
         (fn [row]
           (metabase.util.date/date-trunc-or-extract
            unit
-           (select-nested-field row)))))))
+           (select-nested-field row)
+           (timezone-id)))))))
 
 (defn select-field
   "Returns a function which, given a row of data fetched from datomic, will

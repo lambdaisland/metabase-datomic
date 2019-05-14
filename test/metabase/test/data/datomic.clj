@@ -49,7 +49,7 @@
                        field-definitions))
          (map (partial zipmap attrs))
          (map (fn [attr-map]
-                (into {} (filter val) attr-map)))
+                (into {} (filter (comp some? val)) attr-map)))
          (map (fn [idx attr-map]
                 ;; Add temp-id strings to resolve foreign keys
                 (assoc attr-map :db/id (str table-name "-" idx)))
