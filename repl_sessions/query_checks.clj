@@ -60,3 +60,26 @@
    #_#_:with (?journal-entry-line)}
  (db eeleven-url)
  )
+
+
+(d/q
+ '{:where
+   [(or
+     [?fiscal-year :fiscal-year/account-matches]
+     [?fiscal-year :fiscal-year/accounts]
+     [?fiscal-year :fiscal-year/analytical-year]
+     [?fiscal-year :fiscal-year/currency-options]
+     [?fiscal-year :fiscal-year/end-date]
+     [?fiscal-year :fiscal-year/fiscal-periods]
+     [?fiscal-year :fiscal-year/id]
+     [?fiscal-year :fiscal-year/ledgers]
+     [?fiscal-year :fiscal-year/start-date]
+     [?fiscal-year :fiscal-year/tax-accounts])
+    [?fiscal-year :fiscal-year/ledgers 17592186045807]],
+   :find [(count ?fiscal-year)],
+   :select [(count ?fiscal-year)],
+   :with ()}
+
+
+ (db eeleven-url)
+ )

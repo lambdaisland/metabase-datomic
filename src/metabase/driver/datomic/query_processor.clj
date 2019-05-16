@@ -134,6 +134,9 @@
 (defmethod ->attrib :field-id [[_ field-id]]
   (->attrib (qp.store/field field-id)))
 
+(defmethod ->attrib :fk-> [[_ src dst]]
+  (->attrib dst))
+
 (defmethod ->attrib :aggregation [[_ field-id]]
   (->attrib (qp.store/field field-id)))
 
@@ -156,7 +159,6 @@
 (defmethod table-sym :fk-> [[_ src dst]]
   (symbol (str (field-sym src) "->" (subs (str (table-sym dst)) 1))))
 
-(def field-ref nil)
 (defmulti field-ref
   "Turn an MBQL field reference into something we can stick into our
   pseudo-datalag :select clause. In some cases we stick the same thing in :find,
@@ -186,8 +188,7 @@
   `(datetime ~(field-ref mbqry fref) ~unit))
 
 (defmethod field-ref :fk-> [mbqry [_ src dest :as field]]
-  (list (->attrib dest)
-        (table-sym field)))
+  (list (->attrib field) (table-sym field)))
 
 (defn apply-source-table [dqry {:keys [source-table breakout] :as mbqry}]
   (if (seq breakout)
@@ -248,6 +249,36 @@
 (defmethod field-sym :fk-> [[_ src dst]]
   (symbol (str (field-sym src) "->" (subs (str (field-sym dst)) 1))))
 
+(defn ident-sym [field-ref]
+  (symbol (str (field-sym field-ref) ":ident")))
+
+(defmulti constant-binding (fn [field-ref value]
+                             (mbql.u/dispatch-by-clause-name-or-class field-ref)))
+
+(defmethod constant-binding :field-id [field-ref value]
+  (let [attr (->attrib field-ref)
+        ?eid (table-sym field-ref)]
+    (if (= :db/id attr)
+      (if (keyword? value)
+        (let [ident-sym (ident-sym field-ref)]
+          [[?eid :db/ident value]])
+        [[(list '= ?eid value)]])
+      [[?eid attr value]])))
+
+(defmethod constant-binding :fk-> [[_ src dst] value]
+  (let [src-attr (->attrib src)
+        dst-attr (->attrib dst)
+        ?src (table-sym src)
+        ?dst (table-sym dst)]
+    (if (= :db/id dst-attr)
+      (if (keyword? value)
+        (let [?ident (ident-sym field-ref)]
+          [[?src src-attr ?ident]
+           [?ident :db/ident value]])
+        [[?src src-attr value]])
+      [[?src src-attr ?dst]
+       [?dst dst-attr value]])))
+
 ;;=> [:field-id 45] ;;=> [[?artist :artist/name ?artist|artist|name]]
 (defmulti field-bindings mbql.u/dispatch-by-clause-name-or-class)
 
@@ -262,10 +293,10 @@
          (field-sym dt-field)]))
 
 (defmethod field-bindings :fk-> [[_ src dst :as field]]
-  (if (= :db/id (->attrib dst))
+  (if (= :db/id (->attrib field))
     [[(table-sym src) (->attrib src) (table-sym field)]]
     [[(table-sym src) (->attrib src) (table-sym field)]
-     [(table-sym field) (->attrib dst) (field-sym field)]]))
+     [(table-sym field) (->attrib field) (field-sym field)]]))
 
 ;; breakouts with aggregation = GROUP BY
 ;; breakouts without aggregation = SELECT DISTINCT
@@ -320,9 +351,8 @@
                      order-by))
     dqry))
 
-
 (defmulti value-literal
-  "Extracts the value literal out of form like
+  "Extracts the value literal out of form like and coerce to the DB type.
 
      [:value 40
       {:base_type :type/Float
@@ -333,7 +363,34 @@
 (defmethod value-literal :default [clause]
   (assert false (str "Unrecognized value clause: " clause)))
 
-(defmethod value-literal :value [[t v _]] v)
+(defmethod value-literal :value [[t v f]]
+  (case (:database_type f)
+    "db.type/ref"
+    (if (string? v)
+      (if (some #{\/} v)
+        (keyword v)
+        (Long/parseLong v))
+      v)
+
+    "db.type/string"
+    (str v)
+
+    "db.type/long"
+    (if (string? v)
+      (Long/parseLong v)
+      v)
+
+    "db.type/float"
+    (if (string? v)
+      (Float/parseFloat v)
+      v)
+
+    "db.type/uri"
+    (if (string? v)
+      (java.net.URI. v)
+      v)
+
+    v))
 
 (defmethod value-literal :absolute-datetime [[_ inst unit]]
   (metabase.util.date/date-trunc-or-extract unit inst (timezone-id)))
@@ -346,31 +403,11 @@
 (defmulti filter-clauses (fn [[clause-type _]]
                            clause-type))
 
-(defmethod filter-clauses := [[_ field [_ value {base-type :base_type
-                                                 :as field-inst}]]]
-  (cond
-    (= :type/FK base-type)
-    ;; Deal with idents. Careful, actual :db/id values will also be given to us
-    ;; as strings.
-    (if (and (string? value) (some #{\/} value))
-      (let [ident-sym (symbol (str (field-sym field) ":ident"))]
-        (into (field-bindings field)
-              [[(field-sym field) :db/ident ident-sym]
-               [(list '= ident-sym (keyword value))]]))
-      [[(table-sym field) (->attrib field) (Long/parseLong value)]])
 
-    (= :type/PK base-type)
-    (conj (field-bindings field)
-          [(list '= (field-sym field) (Long/parseLong value))])
-
-    ;; TODO: get a bit smarter about coercing things to what the DB expects
-    (= "db.type/string" (:database_type field-inst))
-    (conj (field-bindings field)
-          [(list '= (field-sym field) (str value))])
-
-    :else
-    (conj (field-bindings field)
-          [(list '= (field-sym field) value)])))
+(defmethod filter-clauses := [[_ field-ref [_ _ {base-type :base_type
+                                                 :as       field-inst}
+                                            :as vclause]]]
+  (constant-binding field-ref (value-literal vclause)))
 
 (defmethod filter-clauses :and [[_ & clauses]]
   (into [] (mapcat filter-clauses) clauses))
@@ -525,7 +562,8 @@
     (fn [row]
       (let [entity (-> row (nth idx) entity-fn)]
         (if (= :db/id attr)
-          (:db/ident entity (:db/id entity))
+          #_(:db/ident entity (:db/id entity))
+          (:db/id entity)
           (unwrap-entity (attr entity)))))
     (let [attr-sym (symbol (str ?eid "|" (namespace attr) "|" (name attr)))
           idx      (index-of find attr-sym)]

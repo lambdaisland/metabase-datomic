@@ -32,6 +32,16 @@
   (gte [x y]
     (and (number? y) (>= x y)))
 
+  java.util.Date
+  (lt [x y]
+    (and (inst? y) (< (inst-ms x) (inst-ms y))))
+  (gt [x y]
+    (and (inst? y) (> (inst-ms x) (inst-ms y))))
+  (lte [x y]
+    (and (inst? y) (<= (inst-ms x) (inst-ms y))))
+  (gte [x y]
+    (and (inst? y) (>= (inst-ms x) (inst-ms y))))
+
   clojure.core.Inst
   (lt [x y]
     (and (inst? y) (< (inst-ms x) (inst-ms y))))
