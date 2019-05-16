@@ -705,7 +705,13 @@
 (defn execute-query [{:keys [native query] :as native-query}]
   (let [db      (db)
         dqry    (read-string (:query native))
-        results (d/q (dissoc dqry :fields) db)]
+        results (d/q (dissoc dqry :fields) db)
+        ;; Hacking around this is as it's so common in Metabase's automatic
+        ;; dashboards. Datomic never returns a count of zero, instead it just
+        ;; returns an empty result.
+        results (if (and (empty? results) (= (:aggregation query) [[:count]]))
+                  [[0]]
+                  results)]
     (if query
       (result-map-mbql db results dqry query)
       (result-map-native db results dqry))))
