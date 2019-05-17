@@ -141,7 +141,7 @@
                      results)))))))
 
   (testing "handle queries that have more than one of the same aggregation?"
-    (is (match? {:data {:rows [[3550.5891999999994 203]]}}
+    (is (match? {:data {:rows [[#(< 3550.58 % 3550.59) 203]]}}
                 (with-datomic
                   (data/run-mbql-query venues
                     {:aggregation [[:sum $latitude] [:sum $price]]}))))))

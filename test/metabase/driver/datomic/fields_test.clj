@@ -3,7 +3,8 @@
             [metabase.driver.datomic.test :refer :all]
             [metabase.driver.datomic.test-data :as test-data]
             [metabase.test.data :as data]
-            [toucan.db :as db]))
+            [toucan.db :as db]
+            [matcher-combinators.matchers :as m]))
 
 (deftest fields-test
   (let [result
@@ -52,9 +53,10 @@
 (deftest basic-query-test
   (with-datomic
     (is (match? {:columns ["db/id" "name" "code"]
-                 :rows    [[pos-int? "Belgium" "BE"]
-                           [pos-int? "Germany" "DE"]
-                           [pos-int? "Finnland" "FI"]]}
+                 :rows    (m/in-any-order
+                           [[pos-int? "Belgium" "BE"]
+                            [pos-int? "Germany" "DE"]
+                            [pos-int? "Finnland" "FI"]])}
                 (test-data/rows+cols
                  (data/with-temp-db [_ test-data/countries]
                    (data/run-mbql-query country)))))

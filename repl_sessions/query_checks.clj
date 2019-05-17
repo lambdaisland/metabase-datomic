@@ -1,5 +1,6 @@
 (ns query-checks
-  (:require [datomic.api :as d]))
+  (:require [datomic.api :as d]
+            [clojure.set :as set]))
 
 (user/refer-repl)
 
@@ -58,9 +59,7 @@
      ?journal-entry-line|journal-entry-line|flow->elvn)
     (sum ?journal-entry-line|journal-entry-line|base-amount)],
    #_#_:with (?journal-entry-line)}
- (db eeleven-url)
- )
-
+ (db eeleven-url))
 
 (d/q
  '{:where
@@ -79,7 +78,346 @@
    :find [(count ?fiscal-year)],
    :select [(count ?fiscal-year)],
    :with ()}
+ (db eeleven-url))
+
+(d/q
+ '{:find [?ledger ?ledger|ledger|journal-entries->journal-entry]
+   :where
+   [[?ledger :ledger/journal-entries ?ledger|ledger|journal-entries->journal-entry]
+    #_(or-join [?ledger ?ledger|ledger|journal-entries]
+               [?ledger :ledger/journal-entries ?ledger|ledger|journal-entries]
+               (and [?ledger ]
+                    [(ground ::nil) ?ledger|ledger|journal-entries]))
+    [(= ?ledger|ledger|journal-entries->journal-entry 17592186046126)]]}
+ (db eeleven-url))
 
 
- (db eeleven-url)
- )
+(d/q
+ '{:where
+   [(or [?ledger :ledger/id]
+        [?ledger :ledger/journal-entries]
+        [?ledger :ledger/name]
+        [?ledger :ledger/tax-entries])
+    (or-join [?ledger ?ledger|ledger|journal-entries]
+             [?ledger :ledger/journal-entries ?ledger|ledger|journal-entries]
+             (and [?ledger]
+                  [(ground :metabase.driver.datomic.query-processor/nil) ?ledger|ledger|journal-entries]))
+    (or-join
+     [?ledger ?ledger|ledger|journal-entries->journal-entry]
+     [?ledger :ledger/journal-entries ?ledger|ledger|journal-entries->journal-entry]
+     (and [?ledger]
+          [(ground :metabase.driver.datomic.query-processor/nil) ?ledger|ledger|journal-entries->journal-entry]))
+    (or-join
+     [?ledger|ledger|journal-entries->journal-entry ?ledger|ledger|journal-entries->journal-entry|journal-entry|id]
+     [?ledger|ledger|journal-entries->journal-entry :journal-entry/id ?ledger|ledger|journal-entries->journal-entry|journal-entry|id]
+     (and [?ledger]
+          [(ground :metabase.driver.datomic.query-processor/nil) ?ledger|ledger|journal-entries->journal-entry|journal-entry|id]))
+    [?ledger :ledger/journal-entries ?ledger|ledger|journal-entries]
+    [(println ?ledger|ledger|journal-entries 17592186046126)]],
+   :find [?ledger|ledger|journal-entries ?ledger|ledger|journal-entries->journal-entry|journal-entry|id],
+   :select [?ledger|ledger|journal-entries ?ledger|ledger|journal-entries->journal-entry|journal-entry|id],
+   :with ()}
+
+ (db eeleven-url))
+
+(d/q
+ '{:find [?ledger]
+   :where
+   [[?ledger :ledger/id]
+    [?ledger :ledger/journal-entries ?je]
+    #_[(prn ?je)]
+    [(ground 17592186046126) ?je]
+    ]
+   }
+
+ (db eeleven-url))
+(set/intersection
+ (set [[17592186045737] [17592186045674]])
+ (set [[17592186046533] [17592186045737] [17592186045674] [17592186046540]]))
+
+
+{:fields [[:field-id 1291] [:fk-> [:field-id 1291] [:field-id 1272]]],
+ :filter [:=
+          [:field-id 1291]
+          [:value
+           17592186046126
+           {:base_type :type/FK,
+            :special_type :type/FK,
+            :database_type "db.type/ref"}]],
+ :source-table 184,
+ :limit 1048576,
+ :join-tables
+ [{:join-alias "journal-entry__via__journal-en",
+   :table-id 191,
+   :fk-field-id 1291,
+   :pk-field-id 1275}]}
+
+
+(d/q
+ '{
+   :find [?ledger|ledger|journal-entries
+          ?ledger|ledger|journal-entries->journal-entry|journal-entry|id],
+
+   :where [(or [?ledger :ledger/id]
+               [?ledger :ledger/journal-entries]
+               [?ledger :ledger/name]
+               [?ledger :ledger/tax-entries])
+
+           [?ledger :ledger/journal-entries ?ledger|ledger|journal-entries]
+           [?ledger|ledger|journal-entries :journal-entry/id ?ledger|ledger|journal-entries->journal-entry|journal-entry|id]
+           [(ground 17592186046126) ?ledger|ledger|journal-entries]],
+   }
+ (db eeleven-url))
+
+(d/q
+ '
+ {:where
+  [(or
+    [?ledger :ledger/id]
+    [?ledger :ledger/journal-entries]
+    [?ledger :ledger/name]
+    [?ledger :ledger/tax-entries])
+   #_[?ledger :ledger/name ?ledger|ledger|name]
+   #_[?ledger :ledger/id ?ledger|ledger|id]
+   [?ledger :ledger/journal-entries ?ledger|ledger|journal-entries]
+   (or-join [?ledger ?ledger|ledger|tax-entries]
+            [?ledger :ledger/tax-entries ?ledger|ledger|tax-entries]
+            (and [?ledger]
+                 [(ground -9223372036854775808) ?ledger|ledger|tax-entries]))
+   [(datomic.api/entity $ ?ledger) ?ledger-entity]
+   [?ledger :ledger/journal-entries ?ledger|ledger|journal-entries]
+   [?ledger|ledger|journal-entries
+    :journal-entry/id
+    ?ledger|ledger|journal-entries->journal-entry|journal-entry|id]
+   [?ledger :ledger/journal-entries ?ledger|ledger|journal-entries]
+   [?ledger|ledger|journal-entries
+    :journal-entry/id
+    ?ledger|ledger|journal-entries->journal-entry|journal-entry|id]
+   [(ground 17592186046126) ?ledger|ledger|journal-entries]],
+  :find
+  [?ledger
+   #_?ledger|ledger|name
+   #_?ledger|ledger|id
+   ?ledger|ledger|journal-entries
+   ?ledger|ledger|tax-entries
+   ?ledger|ledger|journal-entries->journal-entry|journal-entry|id],
+  }
+
+ (db eeleven-url))
+
+#{[17592186045737 17592186046126 "JE-2879-00-0126"]}
+
+(:ledger/tax-entries (d/entity
+                      (db eeleven-url)
+                      17592186045737)
+                     ::missing)
+
+(take 10 (db eeleven-url))
+
+Long/MIN_VALUE
+(d/q
+ '{:where
+   [(or
+     [?journal-entry :journal-entry/base-rate]
+     [?journal-entry :journal-entry/currency]
+     [?journal-entry :journal-entry/date]
+     [?journal-entry :journal-entry/document-date]
+     [?journal-entry :journal-entry/document-number]
+     [?journal-entry :journal-entry/document-reference]
+     [?journal-entry :journal-entry/document-sequence]
+     [?journal-entry :journal-entry/document-type]
+     [?journal-entry :journal-entry/external-id]
+     [?journal-entry :journal-entry/id]
+     [?journal-entry :journal-entry/journal-entry-lines]
+     [?journal-entry :journal-entry/magic-document]
+     [?journal-entry :journal-entry/narration]
+     [?journal-entry :journal-entry/number]
+     [?journal-entry :journal-entry/reverse-of]
+     [?journal-entry :journal-entry/reversed-by]
+     [?journal-entry :journal-entry/state])
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/id
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|id]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/base-rate
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|base-rate]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/currency
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|currency]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/date
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|date]
+    [(metabase.driver.datomic.query-processor/date-trunc-or-extract
+      :default
+      ?journal-entry|journal-entry|date)
+     ?journal-entry|journal-entry|date|default]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/document-date
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|document-date]
+    [(metabase.driver.datomic.query-processor/date-trunc-or-extract
+      :default
+      ?journal-entry|journal-entry|document-date)
+     ?journal-entry|journal-entry|document-date|default]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/document-number
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|document-number]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/document-reference
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|document-reference]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/document-sequence
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|document-sequence]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/document-type
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|document-type]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/external-id
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|external-id]
+    (or-join
+     [?journal-entry ?journal-entry|journal-entry|journal-entry-lines]
+     [?journal-entry
+      :journal-entry/journal-entry-lines
+      ?journal-entry|journal-entry|journal-entry-lines]
+     (and
+      [?journal-entry]
+      [(ground -9223372036854775808)
+       ?journal-entry|journal-entry|journal-entry-lines]))
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/magic-document
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|magic-document]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/narration
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|narration]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/number
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|number]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/reverse-of
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|reverse-of]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/reversed-by
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|reversed-by]
+    [(get-else
+      $
+      ?journal-entry
+      :journal-entry/state
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|state]
+    (or-join
+     [?journal-entry ?journal-entry|journal-entry|journal-entry-lines]
+     [?journal-entry
+      :journal-entry/journal-entry-lines
+      ?journal-entry|journal-entry|journal-entry-lines]
+     (and
+      [?journal-entry]
+      [(ground -9223372036854775808)
+       ?journal-entry|journal-entry|journal-entry-lines]))
+    [(get-else
+      $
+      ?journal-entry|journal-entry|journal-entry-lines
+      :journal-entry-line/id
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|journal-entry-lines->journal-entry-line|journal-entry-line|id]
+    (or-join
+     [?journal-entry ?journal-entry|journal-entry|journal-entry-lines]
+     [?journal-entry
+      :journal-entry/journal-entry-lines
+      ?journal-entry|journal-entry|journal-entry-lines]
+     (and
+      [?journal-entry]
+      [(ground -9223372036854775808)
+       ?journal-entry|journal-entry|journal-entry-lines]))
+    [(get-else
+      $
+      ?journal-entry|journal-entry|journal-entry-lines
+      :journal-entry-line/id
+      :metabase.driver.datomic.query-processor/nil)
+     ?journal-entry|journal-entry|journal-entry-lines->journal-entry-line|journal-entry-line|id]],
+   :find
+   [?journal-entry
+    ?journal-entry|journal-entry|id
+    ?journal-entry|journal-entry|base-rate
+    ?journal-entry|journal-entry|currency
+    ?journal-entry|journal-entry|date|default
+    ?journal-entry|journal-entry|document-date|default
+    ?journal-entry|journal-entry|document-number
+    ?journal-entry|journal-entry|document-reference
+    ?journal-entry|journal-entry|document-sequence
+    ?journal-entry|journal-entry|document-type
+    ?journal-entry|journal-entry|external-id
+    ?journal-entry|journal-entry|journal-entry-lines
+    ?journal-entry|journal-entry|magic-document
+    ?journal-entry|journal-entry|narration
+    ?journal-entry|journal-entry|number
+    ?journal-entry|journal-entry|reverse-of
+    ?journal-entry|journal-entry|reversed-by
+    ?journal-entry|journal-entry|state
+    ?journal-entry|journal-entry|journal-entry-lines->journal-entry-line|journal-entry-line|id],
+   :select
+   [?journal-entry
+    ?journal-entry|journal-entry|id
+    ?journal-entry|journal-entry|base-rate
+    ?journal-entry|journal-entry|currency
+    ?journal-entry|journal-entry|date|default
+    ?journal-entry|journal-entry|document-date|default
+    ?journal-entry|journal-entry|document-number
+    ?journal-entry|journal-entry|document-reference
+    ?journal-entry|journal-entry|document-sequence
+    ?journal-entry|journal-entry|document-type
+    ?journal-entry|journal-entry|external-id
+    ?journal-entry|journal-entry|journal-entry-lines
+    ?journal-entry|journal-entry|magic-document
+    ?journal-entry|journal-entry|narration
+    ?journal-entry|journal-entry|number
+    ?journal-entry|journal-entry|reverse-of
+    ?journal-entry|journal-entry|reversed-by
+    ?journal-entry|journal-entry|state
+    ?journal-entry|journal-entry|journal-entry-lines->journal-entry-line|journal-entry-line|id
+    ?journal-entry|journal-entry|journal-entry-lines->journal-entry-line|journal-entry-line|id],
+   :with ()}
+ (db eeleven-url))

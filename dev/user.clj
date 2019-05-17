@@ -14,6 +14,9 @@
       ((jit yaml.core/from-file))
       ((jit metabase.plugins.initialize/init-plugin-with-info!))))
 
+(defn setup-db! []
+  ((jit metabase.db/setup-db!) :auto-migrate true))
+
 (defn open-metabase []
   ((jit clojure.java.browse/browse-url) "http://localhost:3000"))
 
@@ -21,9 +24,8 @@
   (let [start-web-server!   (jit metabase.server/start-web-server!)
         app                 (jit metabase.handler/app)
         init!               (jit metabase.core/init!)
-        setup-db!           (jit metabase.db/setup-db!)
         clean-up-in-mem-dbs (jit user.repl/clean-up-in-mem-dbs)]
-    (setup-db! :auto-migrate true)
+    (setup-db!)
     (clean-up-in-mem-dbs)
     (start-web-server! app)
     (init!)

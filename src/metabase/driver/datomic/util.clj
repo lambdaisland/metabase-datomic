@@ -60,4 +60,14 @@
   (lte [x y]
     (and (string? y) (<= (.compareTo x y) 0)))
   (gte [x y]
-    (and (string? y) (<= (.compareTo x y) 0))))
+    (and (string? y) (<= (.compareTo x y) 0)))
+
+  clojure.lang.Keyword
+  (lt [x y]
+    (and (keyword? y) (< (.compareTo (name x) (name y)) 0)))
+  (gt [x y]
+    (and (keyword? y) (> (.compareTo (name x) (name y)) 0)))
+  (lte [x y]
+    (and (keyword? y) (<= (.compareTo (name x) (name y)) 0)))
+  (gte [x y]
+    (and (keyword? y) (<= (.compareTo (name x) (name y)) 0))))

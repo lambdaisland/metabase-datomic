@@ -119,34 +119,4 @@
 
 (defmethod driver/execute-query :datomic [_ native-query]
   (swap! query-history conj native-query)
-  (datomic.qp/execute-query native-query)
-  )
-
-(comment
-  (driver/describe-table :datomic {:details {:db "datomic:mem:sample-data"}}
-                         {:name "country"})
-
-  (datomic.qp/attribute-names (db "datomic:mem:sample-data"))
-
-  (datomic.qp/table-columns (db "datomic:mem:sample-data") "country")
-  (datomic.qp/table-columns (db) "label")
-
-  '{:find [?c ?tt], :where [(or [?e :country/name] [?e :country/code]) [?e ?b] [?b :db/ident ?c] [?b :db/valueType ?t] [?t :db/ident ?tt] [(not= ?c :db/ident)]]}
-
-  (map :db/ident
-       (datomic.qp/attributes (db)))
-
-  (datomic.qp/derive-table-names (db))
-
-
-  @(d/transact
-    (conn)
-    [{:country/name "foo"
-      :label/name "bar"
-      }])
-
-  (user/refer-repl)
-
-  (qry 1)
-
-  )
+  (datomic.qp/execute-query native-query))
