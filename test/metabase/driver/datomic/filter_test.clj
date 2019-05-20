@@ -1,11 +1,8 @@
 (ns metabase.driver.datomic.filter-test
   (:require [clojure.test :refer :all]
             [metabase.driver.datomic.test :refer :all]
-            [metabase.driver.datomic.test-data :as test-data]
-            [metabase.models.field :refer [Field]]
-            [metabase.query-processor-test :refer [aggregate-col]]
             [metabase.test.data :as data]
-            [metabase.test.util :as tu]))
+            [metabase.test.util.timezone :as tu.tz]))
 
 (deftest and-gt-gte
   (is (match? {:data {:rows [[pos-int? "Sushi Nakazawa" pos-int? 40.7318 -74.0045 4]
@@ -84,15 +81,13 @@
                    :order-by [[:asc $latitude]]})))))
 
 
-(deftest ^{:kaocha/pending "Seems there is some weirdness with timezones going on, will investigate later."}
-  between-dates
+(deftest between-dates
   (is (match? {:data {:rows [[29]]}}
               (with-datomic
-                #_(tu/with-temporary-setting-values [report-timezone "UTC"])
-                (data/run-mbql-query checkins
-                  {:fields [$date]
-                   :filter [:between [:datetime-field $date :day] "2015-04-01" "2015-05-01"]
-                   :order-by [[:asc $date]]})))))
+                (tu.tz/with-jvm-tz "UTC"
+                  (data/run-mbql-query checkins
+                    {:aggregation [[:count]]
+                     :filter [:between [:datetime-field $date :day] "2015-04-01" "2015-05-01"]}))))))
 
 (deftest or-lte-eq
   (is (match?

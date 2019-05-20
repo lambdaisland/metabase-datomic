@@ -2,7 +2,6 @@
   (:require [datomic.api :as d]
             [clojure.set :as set]))
 
-(user/refer-repl)
 
 
 (d/q
@@ -421,3 +420,21 @@ Long/MIN_VALUE
     ?journal-entry|journal-entry|journal-entry-lines->journal-entry-line|journal-entry-line|id],
    :with ()}
  (db eeleven-url))
+
+
+(d/q
+ '{:where
+   [(or [?checkins :checkins/date] [?checkins :checkins/user_id] [?checkins :checkins/venue_id])
+    [(get-else $ ?checkins :checkins/date :metabase.driver.datomic.query-processor/nil) ?checkins|checkins|date]
+    [(metabase.driver.datomic.query-processor/date-trunc-or-extract-some :default ?checkins|checkins|date) ?checkins|checkins|date|default]
+    [(get-else $ ?checkins :checkins/user_id :metabase.driver.datomic.query-processor/nil) ?checkins|checkins|user_id]
+    [(get-else $ ?checkins :checkins/venue_id :metabase.driver.datomic.query-processor/nil) ?checkins|checkins|venue_id]
+    [(metabase.driver.datomic.query-processor/date-trunc-or-extract-some :day ?checkins|checkins|date) ?checkins|checkins|date|day]
+    [(metabase.driver.datomic.util/lte #inst "2014-12-31T00:00:00.000000000-00:00" ?checkins|checkins|date|day)]
+    [(metabase.driver.datomic.util/lte ?checkins|checkins|date|day #inst "2015-01-31T00:00:00.000000000-00:00")]],
+   :find [?checkins ?checkins|checkins|date|default ?checkins|checkins|user_id ?checkins|checkins|venue_id],
+   :select [?checkins ?checkins|checkins|date|default ?checkins|checkins|user_id ?checkins|checkins|venue_id],
+   :with ()}
+ (db "datomic:mem:test-data"))
+
+(user/refer-repl)

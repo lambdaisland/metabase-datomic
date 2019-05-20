@@ -56,6 +56,6 @@
 - :native-parameters:
 - :expression-aggregations:
 - :nested-queries:
-    - "{:source-query query}":
+    - "{:source-query query}": Yes
 - :binning:
 - :case-sensitivity-string-filter-options:

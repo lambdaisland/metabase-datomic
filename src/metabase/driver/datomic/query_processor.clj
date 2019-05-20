@@ -85,9 +85,14 @@
   "Datomic db, for when we need to inspect the schema during query generation."
   nil)
 
+(def ^:dynamic *mbqry* nil)
+
 (defn- timezone-id
   []
   (or (:report-timezone *settings*) "UTC"))
+
+(defn source-table []
+  (:source-table *mbqry* (:source-table (:source-query *mbqry*))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Datalog query helpers
@@ -210,6 +215,23 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Note that lvar in this context always means *logic variable* (in the
+;; prolog/datalog sense), not to be confused with lval/rval in the C/C++ sense.
+
+(defn lvar
+  "Generate a logic variable, a symbol starting with a question mark, by combining
+  multiple pieces separated by pipe symbols. Parts are converted to string and
+  leading question marks stripped, so you can combined lvars into one bigger
+  lvar, e.g. `(lvar '?foo '?bar)` => `?foo|bar`"
+  [& parts]
+  (symbol
+   (str "?" (str/join "|" (map (fn [p]
+                                 (let [s (str p)]
+                                   (if (= \? (first s))
+                                     (subs s 1)
+                                     s)))
+                               parts)))))
+
 ;; "[:field-id 45] ;;=> ?artist|artist|name"
 (defmulti field-lvar
   "Convert an MBQL field reference like [:field-id 45] into a logic variable named
@@ -227,13 +249,23 @@
         eid (table-lvar field-ref)]
     (if (= :db/id attr)
       eid
-      (symbol (str eid "|" (namespace attr) "|" (name attr))))))
+      (lvar eid (namespace attr) (name attr)))))
 
 (defmethod field-lvar :datetime-field [[_ ref unit]]
-  (symbol (str (field-lvar ref) "|" (name unit))))
+  (lvar (field-lvar ref) (name unit)))
 
 (defmethod field-lvar :fk-> [[_ src dst]]
-  (symbol (str (field-lvar src) "->" (subs (str (field-lvar dst)) 1))))
+  (lvar (str (field-lvar src) "->" (subs (str (field-lvar dst)) 1))))
+
+(defmethod field-lvar :field-literal [[_ field-name]]
+  (if (some #{\|} field-name)
+    (lvar field-name)
+    (if-let [table (source-table)]
+      (let [?table (table-lvar table)]
+        (if (some #{\/} field-name)
+          (lvar ?table field-name)
+          (lvar ?table ?table field-name)))
+      (lvar field-name))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -260,6 +292,9 @@
         [[(list '= ?eid value)]])
       [[?eid attr ?val]
        [(list 'ground value) ?val]])))
+
+(defmethod constant-binding :field-literal [field-name value]
+  [[(list 'ground value) (field-lvar field-name)]])
 
 (defmethod constant-binding :fk-> [[_ src dst :as field-ref] value]
   (let [src-attr (->attrib src)
@@ -319,6 +354,9 @@
     (when-not (= :db/id attr)
       [(bind-attr (table-lvar field-ref) attr (field-lvar field-ref))])))
 
+(defmethod field-bindings :field-literal [field-ref]
+  [])
+
 (defmethod field-bindings :fk-> [[_ src dst :as field]]
   (if (= :db/id (->attrib field))
     [[(table-lvar src) (->attrib src) (table-lvar field)]]
@@ -352,9 +390,15 @@
   (list (symbol (name aggr-type)) (field-lvar field-ref)))
 
 (defmethod aggregation-clause :count [mbqry [_ field-ref]]
-  (if field-ref
+  (cond
+    field-ref
     (%count% (field-lvar field-ref))
-    (%count% (table-lvar (:source-table mbqry)))))
+
+    (source-table)
+    (%count% (table-lvar (source-table)))
+
+    :else
+    (assert false "Count without field is not supported on native sub-queries.")))
 
 (defmethod aggregation-clause :distinct [mbqry [_ field-ref]]
   (%count-distinct% (field-lvar field-ref)))
@@ -485,6 +529,7 @@
         [[`(util/lte ~(value-literal min-val) ~(field-lvar field))]
          [`(util/lte ~(field-lvar field) ~(value-literal max-val))]]))
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; MBQL top level constructs
 ;;
@@ -492,6 +537,18 @@
 ;; like :source-table, :fields, or :order-by, converting it incrementally into
 ;; the corresponding Datalog. Most of the heavy lifting is done by the Datalog
 ;; helper functions above.
+
+(declare read-query)
+(declare mbqry->dqry)
+
+(defn apply-source-query [dqry {:keys [source-query fields breakout] :as mbqry}]
+  (if source-query
+    (cond-> (if-let [native (:native source-query)]
+              (read-query native)
+              (mbqry->dqry source-query))
+      (or (seq fields) (seq breakout))
+      (dissoc :find :select))
+    dqry))
 
 (defn apply-source-table
   "Convert an MBQL :source-table clause into the corresponding Datalog. This
@@ -504,15 +561,16 @@
   In other words this binds the [[table-lvar]] to any entity that has any
   attributes corresponding with the given 'columns' of the given 'table'."
   [dqry {:keys [source-table breakout] :as mbqry}]
-  (let [table   (qp.store/table source-table)
-        eid     (table-lvar table)
-        fields  (db/select Field :table_id source-table)
-        attribs (remove (comp reserved-prefixes namespace)
-                        (map ->attrib fields))
-        clause  `(~'or ~@(map #(vector eid %) attribs))]
-    (-> dqry
-        (into-clause :where [clause]))))
-
+  (if source-table
+    (let [table   (qp.store/table source-table)
+          eid     (table-lvar table)
+          fields  (db/select Field :table_id source-table)
+          attribs (remove (comp reserved-prefixes namespace)
+                          (map ->attrib fields))
+          clause  `(~'or ~@(map #(vector eid %) attribs))]
+      (-> dqry
+          (into-clause :where [clause])))
+    dqry))
 
 ;; Entries in the :fields clause can be
 ;;
@@ -620,22 +678,27 @@
                                   (second clause)))
                            find))))))
 
+(defn mbqry->dqry [mbqry]
+  (-> {}
+      (apply-source-query mbqry)
+      (apply-source-table mbqry)
+      (apply-fields mbqry)
+      (apply-filters mbqry)
+      (apply-order-by mbqry)
+      (apply-breakouts mbqry)
+      (apply-aggregations mbqry)
+      (clean-up-with-clause)))
+
 (defn mbql->native [{database :database
                      mbqry :query
                      settings :settings}]
   (binding [*settings* settings
-            *db* (db)]
-    {:query
-     (with-out-str
-       (clojure.pprint/pprint
-        (-> {}
-            (apply-source-table mbqry)
-            (apply-fields mbqry)
-            (apply-filters mbqry)
-            (apply-order-by mbqry)
-            (apply-breakouts mbqry)
-            (apply-aggregations mbqry)
-            (clean-up-with-clause))))}))
+            *db* (db)
+            *mbqry* mbqry]
+    {:query (-> mbqry
+                mbqry->dqry
+                clojure.pprint/pprint
+                with-out-str)}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; EXECUTE-QUERY
@@ -805,6 +868,9 @@
 (defmethod col-name :field-id [[_ id]]
   (:name (qp.store/field id)))
 
+(defmethod col-name :field-literal [[_ field]]
+  field)
+
 (defmethod col-name :datetime-field [[_ ref unit]]
   (str (col-name ref) ":" (name unit)))
 
@@ -820,15 +886,47 @@
 (defmethod aggr-col-name :distinct [_]
   "count")
 
+(defn lvar->col [lvar]
+  (->> (str/split (subs (str lvar) 1) #"\|")
+       reverse
+       (take 2)
+       reverse
+       (str/join "_")))
+
+(defn lookup->col [form]
+  (cond
+    (list? form)
+    (str (first form))
+
+    (symbol? form)
+    (lvar->col form)
+
+    :else
+    (str form)))
+
+(defn result-columns [dqry {:keys [source-query source-table fields limit breakout aggregation]}]
+  (let [cols (concat (map col-name fields)
+                     (map col-name breakout)
+                     (map aggr-col-name aggregation))]
+    (cond
+      (seq cols)
+      cols
+
+      source-query
+      (recur dqry source-query)
+
+      (:select dqry)
+      (map lookup->col (:select dqry))
+
+      (:find dqry)
+      (map lvar->col (:select dqry)))))
+
 (defn result-map-mbql
   "Result map for a query originating from Metabase directly. We have access to
   the original MBQL query."
   [db results dqry mbqry]
-  (let [{:keys [source-table fields limit breakout aggregation]} mbqry]
-    {:columns (concat (map col-name fields)
-                      (map col-name breakout)
-                      (map aggr-col-name aggregation))
-     :rows    (resolve-fields db results dqry)}))
+  {:columns (result-columns dqry mbqry)
+   :rows    (resolve-fields db results dqry)})
 
 (defn result-map-native
   "Result map for a 'native' query entered directly by the user."

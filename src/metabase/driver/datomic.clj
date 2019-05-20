@@ -13,6 +13,7 @@
 (defmethod driver/supports? [:datomic :standard-deviation-aggregations] [_ _] true)
 (defmethod driver/supports? [:datomic :case-sensitivity-string-filter-options] [_ _] false)
 (defmethod driver/supports? [:datomic :foreign-keys] [_ _] true)
+(defmethod driver/supports? [:datomic :nested-queries] [_ _] true)
 
 (defmethod driver/can-connect? :datomic [_ {db :db}]
   (try
@@ -119,4 +120,6 @@
 
 (defmethod driver/execute-query :datomic [_ native-query]
   (swap! query-history conj native-query)
-  (datomic.qp/execute-query native-query))
+  (let [result (datomic.qp/execute-query native-query)]
+    (swap! query-history conj result)
+    result))
