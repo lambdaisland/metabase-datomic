@@ -40,3 +40,11 @@
               :data
               :rows
               (map first)))))
+
+
+;; Do grouping across nil placeholders for various types
+;; {:find [(count ?foo) ?bar]}
+;; where :bar can be "nil"
+
+
+;; check that idents are returned as such

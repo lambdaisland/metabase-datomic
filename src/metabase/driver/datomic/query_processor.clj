@@ -1,13 +1,15 @@
 (ns metabase.driver.datomic.query-processor
-  (:require [clojure.string :as str]
+  (:require [clojure.set :as set]
+            [clojure.string :as str]
             [datomic.api :as d]
             [metabase.driver.datomic.util :as util :refer [pal par]]
             [metabase.mbql.util :as mbql.u]
             [metabase.models.field :as field :refer [Field]]
             [metabase.models.table :refer [Table]]
             [metabase.query-processor.store :as qp.store]
-            [toucan.db :as db]
-            [clojure.set :as set]))
+            [toucan.db :as db])
+  (:import java.net.URI
+           java.util.UUID))
 
 ;; Local variable naming conventions:
 
@@ -280,10 +282,30 @@
 (def NIL ::nil)
 (def NIL-REF Long/MIN_VALUE)
 
+;; Try to provide a type-appropriate placeholder, so that Datomic is able to
+;; sort/group correctly
+(def NIL_VALUES
+  {:db.type/string  (str ::nil)
+   :db.type/keyword ::nil
+   :db.type/bigdec  Long/MIN_VALUE
+   :db.type/bigint  Long/MIN_VALUE
+   :db.type/double  Long/MIN_VALUE
+   :db.type/float   Long/MIN_VALUE
+   :db.type/long    Long/MIN_VALUE
+   :db.type/ref     Long/MIN_VALUE
+   :db.type/instant #inst "0001-01-01T01:01:01"
+   :db.type/uri     (URI. (str "nil" ::nil))
+   :db.type/uuid    (UUID/randomUUID)})
+
 (defn cardinality-many?
   "Is the given keyword an reference attribute with cardinality/many?"
   [attr]
   (= :db.cardinality/many (:db/cardinality (d/entity *db* attr))))
+
+(defn attr-type [ident]
+  (get-in
+   (d/pull *db* [{:db/valueType [:db/ident]}] ident)
+   [:db/valueType :db/ident]))
 
 (defn bind-attr
   "Datalog EAV binding that unifies to NIL if the attribute is not present, the
@@ -295,7 +317,7 @@
     (list 'or-join [?e ?v]
           [?e a ?v]
           (list 'and [?e] [(list 'ground NIL-REF) ?v]))
-    [(%get-else% '$ ?e a NIL) ?v]))
+    [(%get-else% '$ ?e a (NIL_VALUES (attr-type a) ::nil)) ?v]))
 
 (defn date-trunc-or-extract-some [unit date]
   (if (= NIL date)
@@ -406,46 +428,43 @@
     (first aggregation)))
 
 (defmethod aggregation-clause :default [mbqry [aggr-type field-ref]]
-(list (symbol (name aggr-type)) (field-lvar field-ref)))
+  (list (symbol (name aggr-type)) (field-lvar field-ref)))
 
 (defmethod aggregation-clause :count [mbqry [_ field-ref]]
-(cond
-  field-ref
-  (%count% (field-lvar field-ref))
+  (cond
+    field-ref
+    (%count% (field-lvar field-ref))
 
-  (source-table)
-  (%count% (table-lvar (source-table)))
+    (source-table)
+    (%count% (table-lvar (source-table)))
 
-  :else
-  (assert false "Count without field is not supported on native sub-queries.")))
+    :else
+    (assert false "Count without field is not supported on native sub-queries.")))
 
 (defmethod aggregation-clause :distinct [mbqry [_ field-ref]]
-(%count-distinct% (field-lvar field-ref)))
+  (%count-distinct% (field-lvar field-ref)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmulti value-literal
-"Extracts the value literal out of and coerce to the DB type.
+  "Extracts the value literal out of and coerce to the DB type.
 
      [:value 40
       {:base_type :type/Float
        :special_type :type/Latitude
        :database_type \"db.type/double\"}]
     ;;=> 40"
-(fn [[type :as clause]] type))
+  (fn [[type :as clause]] type))
 
 (defmethod value-literal :default [clause]
   (assert false (str "Unrecognized value clause: " clause)))
 
 (defmethod value-literal :value [[t v f]]
-  (if (and (nil? v) (not= "db.type/ref" (:database_type f)))
-    NIL
+  (if (nil? v)
+    (NIL_VALUES (keyword (:database_type f)) NIL)
     (case (:database_type f)
       "db.type/ref"
       (cond
-        (nil? v)
-        NIL-REF
-
         (and (string? v) (some #{\/} v))
         (keyword v)
 
@@ -476,47 +495,47 @@
       v)))
 
 (defmethod value-literal :absolute-datetime [[_ inst unit]]
-(metabase.util.date/date-trunc-or-extract unit inst (timezone-id)))
+  (metabase.util.date/date-trunc-or-extract unit inst (timezone-id)))
 
 (defmethod value-literal :relative-datetime [[_ offset unit]]
-(if (= :current offset)
-  (java.util.Date.)
-  (metabase.util.date/relative-date unit offset)))
+  (if (= :current offset)
+    (java.util.Date.)
+    (metabase.util.date/relative-date unit offset)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmulti filter-clauses
-"Convert an MBQL :filter form into Datalog :where clauses
+  "Convert an MBQL :filter form into Datalog :where clauses
 
   [:= [:field-id 45] [:value 20]]
   ;;=> [[?user :user/age 20]]"
-(fn [[clause-type _]]
-  clause-type))
+  (fn [[clause-type _]]
+    clause-type))
 
 (defmethod filter-clauses := [[_ field-ref [_ _ {base-type :base_type
                                                  :as       field-inst}
                                             :as vclause]]]
-(constant-binding field-ref (value-literal vclause)))
+  (constant-binding field-ref (value-literal vclause)))
 
 (defmethod filter-clauses :and [[_ & clauses]]
-(into [] (mapcat filter-clauses) clauses))
+  (into [] (mapcat filter-clauses) clauses))
 
 (defn logic-vars
-"Recursively find all logic var symbols starting with a question mark."
-[clause]
-(cond
-  (coll? clause)
-  (into #{} (mapcat logic-vars) clause)
-
-  (and (symbol? clause)
-       (= \? (first (name clause))))
+  "Recursively find all logic var symbols starting with a question mark."
   [clause]
+  (cond
+    (coll? clause)
+    (into #{} (mapcat logic-vars) clause)
 
-  :else
-  []))
+    (and (symbol? clause)
+         (= \? (first (name clause))))
+    [clause]
+
+    :else
+    []))
 
 (defn or-join
-"Takes a sequence of sequence of datalog :where clauses, each inner sequence is
+  "Takes a sequence of sequence of datalog :where clauses, each inner sequence is
   considered a single logical group, where clauses within one group are
   considered logical conjunctions (and), and generates an or-join, unifying
   those lvars that are present in all clauses.
@@ -529,33 +548,33 @@
       (and [?venue :venue/location ?loc]
            [?loc :location/city \"New York\"])
       [?venue :venue/size 1000])] "
-[clauses]
-(let [lvars   (apply set/intersection (map logic-vars clauses))]
-  (assert (pos-int? (count lvars))
-    (str "No logic variables found to unify across [:or] in " (pr-str `[:or ~@clauses])))
+  [clauses]
+  (let [lvars   (apply set/intersection (map logic-vars clauses))]
+    (assert (pos-int? (count lvars))
+      (str "No logic variables found to unify across [:or] in " (pr-str `[:or ~@clauses])))
 
-  ;; Only bind any logic vars shared by all clauses in the outer clause. This
-  ;; will prevent Datomic from complaining, but could potentially be too
-  ;; naive. Since typically all clauses filter the same entity though this
-  ;; should generally be good enough.
-  [`(~'or-join [~@lvars]
-     ~@(map (fn [c]
-              (if (= (count c) 1)
-                (first c)
-                (cons 'and c)))
-            clauses))]))
+    ;; Only bind any logic vars shared by all clauses in the outer clause. This
+    ;; will prevent Datomic from complaining, but could potentially be too
+    ;; naive. Since typically all clauses filter the same entity though this
+    ;; should generally be good enough.
+    [`(~'or-join [~@lvars]
+       ~@(map (fn [c]
+                (if (= (count c) 1)
+                  (first c)
+                  (cons 'and c)))
+              clauses))]))
 
 
 (defmethod filter-clauses :or [[_ & clauses]]
-(or-join (map filter-clauses clauses)))
+  (or-join (map filter-clauses clauses)))
 
 (defmethod filter-clauses :< [[_ field value]]
-(conj (field-bindings field)
-      [`(util/lt ~(field-lvar field) ~(value-literal value))]))
+  (conj (field-bindings field)
+        [`(util/lt ~(field-lvar field) ~(value-literal value))]))
 
 (defmethod filter-clauses :> [[_ field value]]
-(conj (field-bindings field)
-      [`(util/gt ~(field-lvar field) ~(value-literal value))]))
+  (conj (field-bindings field)
+        [`(util/gt ~(field-lvar field) ~(value-literal value))]))
 
 (defmethod filter-clauses :<= [[_ field value]]
   (conj (field-bindings field)
@@ -911,7 +930,8 @@
     val))
 
 (defn resolve-fields [db result {:keys [select order-by] :as dqry}]
-  (let [entity-fn (memoize (fn [eid] (d/entity db eid)))]
+  (let [nil-placeholder? (set (vals NIL_VALUES))
+        entity-fn (memoize (fn [eid] (d/entity db eid)))]
     (->> result
          ;; TODO: This needs to be retought, we can only really order after
          ;; expanding set references (cartesian-product). Currently breaks when
@@ -920,7 +940,9 @@
          (map (select-fields dqry entity-fn select))
          (mapcat cartesian-product)
          (map (pal map entity->db-id))
-         (map (pal map #({NIL nil NIL-REF nil} % %))))))
+         (map (pal map #(if (nil-placeholder? %)
+                          nil
+                          %))))))
 
 (defmulti col-name mbql.u/dispatch-by-clause-name-or-class)
 
