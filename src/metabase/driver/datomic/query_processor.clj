@@ -297,6 +297,59 @@
           (list 'and [?e] [(list 'ground NIL-REF) ?v]))
     [(%get-else% '$ ?e a NIL) ?v]))
 
+(defn date-trunc-or-extract-some [unit date]
+  (if (= NIL date)
+    NIL
+    (metabase.util.date/date-trunc-or-extract unit date (timezone-id))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;=> [:field-id 45] ;;=> [[?artist :artist/name ?artist|artist|name]]
+(defmulti field-bindings
+  "Given a field reference, return the necessary Datalog bindings (as used
+  in :where) to bind the entity-eid to [[table-lvar]], and the associated value
+  to [[field-lvar]].
+
+  This uses Datomic's `get-else` to prevent filtering, in other words this will
+  bind logic variables, but does not restrict the result."
+  mbql.u/dispatch-by-clause-name-or-class)
+
+(defmethod field-bindings :field-id [field-ref]
+  (let [attr (->attrib field-ref)]
+    (when-not (= :db/id attr)
+      [(bind-attr (table-lvar field-ref) attr (field-lvar field-ref))])))
+
+(defmethod field-bindings :field-literal [[_ literal :as field-ref]]
+  ;; This is dodgy af, and we really have no business binding attributes to
+  ;; lvars based on what we think the user might need, but seems you are
+  ;; supposed to be able to do this, notably with native queries, so if we have
+  ;; a source table, and the field name seems to correspond with an actual
+  ;; attribute with that prefix, then we'll go for it. If not this retuns an
+  ;; empty seq i.e. doesn't bind anything, and you will likely end up with
+  ;; Datomic complaining about insufficient bindings.
+  (if-let [table (source-table)]
+    (let [attr (keyword (:name (qp.store/table table)) literal)]
+      (if (:db/valueType (d/entity *db* attr))
+        [(bind-attr (table-lvar table) attr (field-lvar field-ref))]
+        [attr]))
+    []))
+
+(defmethod field-bindings :fk-> [[_ src dst :as field]]
+  (if (= :db/id (->attrib field))
+    [[(table-lvar src) (->attrib src) (table-lvar field)]]
+    [(bind-attr (table-lvar src) (->attrib src) (field-lvar src))
+     (bind-attr (field-lvar src) (->attrib field) (field-lvar field))]))
+
+(defmethod field-bindings :aggregation [_]
+  [])
+
+(defmethod field-bindings :datetime-field [[_ field-ref unit :as dt-field]]
+  (conj (field-bindings field-ref)
+        [`(date-trunc-or-extract-some ~unit ~(field-lvar field-ref))
+         (field-lvar dt-field)]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defmulti constant-binding
   "Datalog bindings for filtering based on the value of an attribute (a constant
   value in MBQL), given a field reference and a value.
@@ -344,64 +397,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;=> [:field-id 45] ;;=> [[?artist :artist/name ?artist|artist|name]]
-(defmulti field-bindings
-  "Given a field reference, return the necessary Datalog bindings (as used
-  in :where) to bind the entity-eid to [[table-lvar]], and the associated value
-  to [[field-lvar]].
-
-  This uses Datomic's `get-else` to prevent filtering, in other words this will
-  bind logic variables, but does not restrict the result."
-  mbql.u/dispatch-by-clause-name-or-class)
-
-(defmethod field-bindings :field-id [field-ref]
-  (let [attr (->attrib field-ref)]
-    (when-not (= :db/id attr)
-      [(bind-attr (table-lvar field-ref) attr (field-lvar field-ref))])))
-
-(defmethod field-bindings :field-literal [[_ literal :as field-ref]]
-  ;; This is dodgy af, and we really have no business binding attributes to
-  ;; lvars based on what we think the user might need, but seems you are
-  ;; supposed to be able to do this, notably with native queries, so if we have
-  ;; a source table, and the field name seems to correspond with an actual
-  ;; attribute with that prefix, then we'll go for it. If not this retuns an
-  ;; empty seq i.e. doesn't bind anything, and you will likely end up with
-  ;; Datomic complaining about insufficient bindings.
-  (if-let [table (source-table)]
-    (let [attr (keyword (:name (qp.store/table table)) literal)]
-      (if (:db/valueType (d/entity *db* attr))
-        [(bind-attr (table-lvar table) attr (field-lvar field-ref))]
-        [attr]))
-    []))
-
-(defmethod field-bindings :fk-> [[_ src dst :as field]]
-  (if (= :db/id (->attrib field))
-    [[(table-lvar src) (->attrib src) (table-lvar field)]]
-    [(bind-attr (table-lvar src) (->attrib src) (field-lvar src))
-     (bind-attr (field-lvar src) (->attrib field) (field-lvar field))]))
-
-(defmethod field-bindings :aggregation [_]
-  [])
-
-(defn date-trunc-or-extract-some [unit date]
-  (if (= NIL date)
-    NIL
-    (metabase.util.date/date-trunc-or-extract unit date (timezone-id))))
-
-(defmethod field-bindings :datetime-field [[_ field-ref unit :as dt-field]]
-  (conj (field-bindings field-ref)
-        [`(date-trunc-or-extract-some ~unit ~(field-lvar field-ref))
-         (field-lvar dt-field)]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defmulti aggregation-clause
-"Return a Datalog clause for a given MBQL aggregation
+  "Return a Datalog clause for a given MBQL aggregation
 
   [:count [:field-id 45]]
   ;;=> (count ?foo|bar|baz)"
-(fn [mbqry aggregation]
-  (first aggregation)))
+  (fn [mbqry aggregation]
+    (first aggregation)))
 
 (defmethod aggregation-clause :default [mbqry [aggr-type field-ref]]
 (list (symbol (name aggr-type)) (field-lvar field-ref)))
@@ -433,45 +435,45 @@
 (fn [[type :as clause]] type))
 
 (defmethod value-literal :default [clause]
-(assert false (str "Unrecognized value clause: " clause)))
+  (assert false (str "Unrecognized value clause: " clause)))
 
 (defmethod value-literal :value [[t v f]]
-(if (and (nil? v) (not= "db.type/ref" (:database_type f)))
-  NIL
-  (case (:database_type f)
-    "db.type/ref"
-    (cond
-      (nil? v)
-      NIL-REF
+  (if (and (nil? v) (not= "db.type/ref" (:database_type f)))
+    NIL
+    (case (:database_type f)
+      "db.type/ref"
+      (cond
+        (nil? v)
+        NIL-REF
 
-      (and (string? v) (some #{\/} v))
-      (keyword v)
+        (and (string? v) (some #{\/} v))
+        (keyword v)
 
-      (string? v)
-      (Long/parseLong v)
+        (string? v)
+        (Long/parseLong v)
 
-      :else
-      v)
+        :else
+        v)
 
-    "db.type/string"
-    (str v)
+      "db.type/string"
+      (str v)
 
-    "db.type/long"
-    (if (string? v)
-      (Long/parseLong v)
-      v)
+      "db.type/long"
+      (if (string? v)
+        (Long/parseLong v)
+        v)
 
-    "db.type/float"
-    (if (string? v)
-      (Float/parseFloat v)
-      v)
+      "db.type/float"
+      (if (string? v)
+        (Float/parseFloat v)
+        v)
 
-    "db.type/uri"
-    (if (string? v)
-      (java.net.URI. v)
-      v)
+      "db.type/uri"
+      (if (string? v)
+        (java.net.URI. v)
+        v)
 
-    v)))
+      v)))
 
 (defmethod value-literal :absolute-datetime [[_ inst unit]]
 (metabase.util.date/date-trunc-or-extract unit inst (timezone-id)))
@@ -577,6 +579,13 @@
         [`(util/str-starts-with? ~(field-lvar field)
                                  ~(value-literal value)
                                  ~(merge {:case-sensitive true} opts))]))
+
+(defmethod filter-clauses :ends-with [[_ field value opts]]
+  (conj (field-bindings field)
+        [`(util/str-ends-with? ~(field-lvar field)
+                               ~(value-literal value)
+                               ~(merge {:case-sensitive true} opts))]))
+
 
 (defmethod filter-clauses :contains [[_ field value opts]]
   (conj (field-bindings field)
