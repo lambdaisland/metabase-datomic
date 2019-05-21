@@ -101,7 +101,7 @@ Architecture Decisions]] by Michael Nygard.
 
 * 003: Use an "extended Datalog" format
 
-  Status: ACCEPTED
+  Status: ACCEPTED / Partially superseded by 007
 
 ** Context
   We are challenged with the task of converting Metabase's internal query
@@ -274,6 +274,74 @@ Architecture Decisions]] by Michael Nygard.
    hand them back to us when constructing filter clauses, so we need to convert
    them back to keywords so Datomic recognizes them as idents.
 
+* 007: Use ~get-else~ to bind fields, to mimic ~nil~ semantics
+
+  Status: ACCEPTED
+
+** Context
+
+   Datomic does not have ~nil~ values for attributes, either an attribute is
+   present on an entity or it is not, but it can not be present with a value of
+   ~nil~. Metabase and MBQL are modeled on RDBMS/SQL semantics, where fields can
+   be ~NULL~. We want to mimic this by treating missing attributes as if they
+   are attributes with ~nil~ values.
+
+   A datalog ~:where~ form like ~[?venue :venue/name ?venue|name]~ does two
+   things, it *binds* the ~?venue~ and ~?venue|name~ logical variables (lvars),
+   and it filters the result set (unification). This means that entities where
+   the ~:venue/name~ is absent (conceptually ~nil~), these entities will not
+   show up in the result.
+
+   We partially worked around this in 003 by avoiding using binding forms to
+   pull out attribute values, and instead adopted a two step process where we
+   first query for entity ids only, then use the entity API to pull out the
+   necessary attributes.
+
+   This turned out to be less than ideal, because it made it hard to implement
+   filtering operations correctly.
+
+** Decision
+
+   Instead we *do* bind attribute values to lvars, but we use ~get-else~ and
+   ~nil~ placeholder value to deal with missing attributes.
+
+   #+begin_src clojure
+     [:where
+      [(get-else $ ?venue :venue/name ::nil) ?venue/name]]
+   #+end_src
+
+   This way we get the binding inside the query, and can implement filtering
+   operations inside the query based on those values. It also means ~:fields~
+   and ~:breakout~ based queries differ less than before, and so share more
+   code and logic.
+
+   For reference attributes with :cardinality/many ~get-else~ is not supported,
+   in these cases we fall back to emulating ~get-else~ with an ~or-join~.
+
+   In this case using a special keyword as a placeholder does not work, Datomic
+   expects the lvar to be bound to an integer (a possible ~:db/id~), so instead
+   of ~::nil~ as a placeholder, we use ~Long/MIN_VALUE~.
+
+   #+begin_src clojure
+   (or-join [?ledger ?ledger|ledger|tax-entries]
+            [?ledger :ledger/tax-entries ?ledger|ledger|tax-entries]
+            (and [?ledger]
+                 [(ground Long/MIN_VALUE) ?ledger|ledger|tax-entries]))
+   #+end_src
+
+   Note that the two-step process from 003 is still in place, we still honor the
+   extra ~:select~ clause to perform post-processing on the result, but it isn't
+   used as extensively as before, as most of the values we need are directly
+   returned in the query result.
+
+** Consequences
+
+   Once this was implemented implemeting filter operations was a breeze. This
+   adds some new post-processing because we need to replace the placeholders
+   with actual ~nil~ values again.
+
+   Query generating code needs to pay attention to use the necessary helper
+   functions to set up lvar bindings, so these semantics are preserved.
 
 * Template
 
