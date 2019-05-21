@@ -57,7 +57,6 @@
 
 (defmethod tx/create-db! :datomic
   [_ {:keys [table-definitions] :as dbdef} & {:keys [skip-drop-db?] :as opts}]
-  (println "Creating database!")
   (let [url (db-url dbdef)]
     (when-not skip-drop-db?
       (d/delete-database url))

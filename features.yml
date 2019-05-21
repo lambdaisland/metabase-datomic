@@ -17,14 +17,14 @@
         - "[:> concrete-field orderable-value]": Yes
         - "[:<= concrete-field orderable-value]": Yes
         - "[:>= concrete-field orderable-value]": Yes
-        - "[:is-null concrete-field]":
-        - "[:not-null concrete-field]":
+        - "[:is-null concrete-field]": Yes
+        - "[:not-null concrete-field]": Yes
         - "[:between concrete-field min orderable-value max orderable-value]": Yes
-        - "[:inside lat concrete-field lon concrete-field lat-max numeric-literal lon-min numeric-literal lat-min numeric-literal lon-max numeric-literal]":
-        - "[:starts-with concrete-field string-literal]":
-        - "[:contains concrete-field string-literal]":
-        - "[:does-not-contain concrete-field string-literal]":
-        - "[:ends-with concrete-field string-literal]":
+        - "[:inside lat concrete-field lon concrete-field lat-max numeric-literal lon-min numeric-literal lat-min numeric-literal lon-max numeric-literal]": Yes
+        - "[:starts-with concrete-field string-literal]": Yes
+        - "[:contains concrete-field string-literal]": Yes
+        - "[:does-not-contain concrete-field string-literal]": Yes
+        - "[:ends-with concrete-field string-literal]": Yes
         - "[:time-interval field concrete-field n :current|:last|:next|integer-literal unit relative-datetime-unit]":
     - "{:limit integer-literal}": Yes
     - "{:order-by [& order-by-clause]}": Yes
@@ -58,4 +58,4 @@
 - :nested-queries:
     - "{:source-query query}": Yes
 - :binning:
-- :case-sensitivity-string-filter-options:
+- :case-sensitivity-string-filter-options: Yes

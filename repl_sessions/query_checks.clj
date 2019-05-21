@@ -437,4 +437,32 @@ Long/MIN_VALUE
    :with ()}
  (db "datomic:mem:test-data"))
 
+(d/q
+ '
+ {:where
+  [(or [?checkins :checkins/date]
+       [?checkins :checkins/user_id]
+       [?checkins :checkins/venue_id])
+
+   [(get-else $ ?checkins :checkins/date :metabase.driver.datomic.query-processor/nil)
+    ?checkins|checkins|date]
+
+   [(metabase.driver.datomic.query-processor/date-trunc-or-extract-some :week ?checkins|checkins|date)
+    ?checkins|checkins|date|week]
+
+   [(= #inst "2015-06-21T00:00:00.000000000-00:00" ?checkins|checkins|date|week)]],
+
+  :find [(count ?checkins)],
+  :select [(count ?checkins)],
+  :with ()}
+
+
+
+
+ (db "datomic:mem:test-data"))
+
+(d/touch
+ (d/entity (db "datomic:mem:test-data") :venues/name))
+
+
 (user/refer-repl)

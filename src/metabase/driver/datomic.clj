@@ -9,11 +9,20 @@
 
 (driver/register! :datomic)
 
-(defmethod driver/supports? [:datomic :basic-aggregations] [_ _] true)
-(defmethod driver/supports? [:datomic :standard-deviation-aggregations] [_ _] true)
-(defmethod driver/supports? [:datomic :case-sensitivity-string-filter-options] [_ _] false)
-(defmethod driver/supports? [:datomic :foreign-keys] [_ _] true)
-(defmethod driver/supports? [:datomic :nested-queries] [_ _] true)
+(def features
+  {:basic-aggregations                     true
+   :standard-deviation-aggregations        true
+   :case-sensitivity-string-filter-options true
+   :foreign-keys                           true
+   :nested-queries                         true
+   :expressions                            false
+   :expression-aggregations                false
+   :native-parameters                      false
+   :binning                                false})
+
+(doseq [[feature] features]
+  (defmethod driver/supports? [:datomic feature] [_ _]
+    (get features feature)))
 
 (defmethod driver/can-connect? :datomic [_ {db :db}]
   (try

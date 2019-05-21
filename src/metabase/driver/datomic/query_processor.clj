@@ -272,48 +272,6 @@
 (defn ident-lvar [field-ref]
   (symbol (str (field-lvar field-ref) ":ident")))
 
-(defmulti constant-binding
-  "Datalog bindings for filtering based on the value of an attribute (a constant
-  value in MBQL), given a field reference and a value.
-
-  At its simplest returns [[?table-lvar :attribute CONSTANT]], but can return
-  more complex forms to deal with looking by :db/id, by :db/ident, or through
-  foreign key."
-  (fn [field-ref value]
-    (mbql.u/dispatch-by-clause-name-or-class field-ref)))
-
-(defmethod constant-binding :field-id [field-ref value]
-  (let [attr (->attrib field-ref)
-        ?eid (table-lvar field-ref)
-        ?val (field-lvar field-ref)]
-    (if (= :db/id attr)
-      (if (keyword? value)
-        [[?eid :db/ident value]]
-        [[(list '= ?eid value)]])
-      [[?eid attr ?val]
-       [(list 'ground value) ?val]])))
-
-(defmethod constant-binding :field-literal [field-name value]
-  [[(list 'ground value) (field-lvar field-name)]])
-
-(defmethod constant-binding :fk-> [[_ src dst :as field-ref] value]
-  (let [src-attr (->attrib src)
-        dst-attr (->attrib dst)
-        ?src (table-lvar src)
-        ?dst (table-lvar dst)
-        ?val (field-lvar field-ref)]
-    (if (= :db/id dst-attr)
-      (if (keyword? value)
-        (let [?ident (ident-lvar field-ref)]
-          [[?src src-attr ?ident]
-           [?ident :db/ident value]])
-        [[?src src-attr value]])
-      [[?src src-attr ?dst]
-       [?dst dst-attr ?val]
-       [(list 'ground value) ?val]])))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 ;; Datomic function helpers
 (defmacro %get-else% [& args] `(list '~'get-else ~@args))
 (defmacro %count% [& args] `(list '~'count ~@args))
@@ -339,6 +297,53 @@
           (list 'and [?e] [(list 'ground NIL-REF) ?v]))
     [(%get-else% '$ ?e a NIL) ?v]))
 
+(defmulti constant-binding
+  "Datalog bindings for filtering based on the value of an attribute (a constant
+  value in MBQL), given a field reference and a value.
+
+  At its simplest returns [[?table-lvar :attribute CONSTANT]], but can return
+  more complex forms to deal with looking by :db/id, by :db/ident, or through
+  foreign key."
+  (fn [field-ref value]
+    (mbql.u/dispatch-by-clause-name-or-class field-ref)))
+
+(defmethod constant-binding :field-id [field-ref value]
+  (let [attr (->attrib field-ref)
+        ?eid (table-lvar field-ref)
+        ?val (field-lvar field-ref)]
+    (if (= :db/id attr)
+      (if (keyword? value)
+        [[?eid :db/ident value]]
+        [[(list '= ?eid value)]])
+      [(bind-attr ?eid attr ?val)
+       [(list 'ground value) ?val]])))
+
+(defmethod constant-binding :field-literal [field-name value]
+  [[(list 'ground value) (field-lvar field-name)]])
+
+(defmethod constant-binding :datetime-field [[_ field-ref unit :as dt-field] value]
+  (let [?val (field-lvar dt-field)]
+    (conj (field-bindings dt-field)
+          [(list '= (date-trunc-or-extract-some unit value) ?val)])))
+
+(defmethod constant-binding :fk-> [[_ src dst :as field-ref] value]
+  (let [src-attr (->attrib src)
+        dst-attr (->attrib dst)
+        ?src (table-lvar src)
+        ?dst (table-lvar dst)
+        ?val (field-lvar field-ref)]
+    (if (= :db/id dst-attr)
+      (if (keyword? value)
+        (let [?ident (ident-lvar field-ref)]
+          [[?src src-attr ?ident]
+           [?ident :db/ident value]])
+        [[?src src-attr value]])
+      [(bind-attr ?src src-attr ?dst)
+       (bind-attr ?dst dst-attr ?val)
+       [(list 'ground value) ?val]])))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;;=> [:field-id 45] ;;=> [[?artist :artist/name ?artist|artist|name]]
 (defmulti field-bindings
   "Given a field reference, return the necessary Datalog bindings (as used
@@ -354,8 +359,20 @@
     (when-not (= :db/id attr)
       [(bind-attr (table-lvar field-ref) attr (field-lvar field-ref))])))
 
-(defmethod field-bindings :field-literal [field-ref]
-  [])
+(defmethod field-bindings :field-literal [[_ literal :as field-ref]]
+  ;; This is dodgy af, and we really have no business binding attributes to
+  ;; lvars based on what we think the user might need, but seems you are
+  ;; supposed to be able to do this, notably with native queries, so if we have
+  ;; a source table, and the field name seems to correspond with an actual
+  ;; attribute with that prefix, then we'll go for it. If not this retuns an
+  ;; empty seq i.e. doesn't bind anything, and you will likely end up with
+  ;; Datomic complaining about insufficient bindings.
+  (if-let [table (source-table)]
+    (let [attr (keyword (:name (qp.store/table table)) literal)]
+      (if (:db/valueType (d/entity *db* attr))
+        [(bind-attr (table-lvar table) attr (field-lvar field-ref))]
+        [attr]))
+    []))
 
 (defmethod field-bindings :fk-> [[_ src dst :as field]]
   (if (= :db/id (->attrib field))
@@ -379,52 +396,61 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmulti aggregation-clause
-  "Return a Datalog clause for a given MBQL aggregation
+"Return a Datalog clause for a given MBQL aggregation
 
   [:count [:field-id 45]]
   ;;=> (count ?foo|bar|baz)"
-  (fn [mbqry aggregation]
-    (first aggregation)))
+(fn [mbqry aggregation]
+  (first aggregation)))
 
 (defmethod aggregation-clause :default [mbqry [aggr-type field-ref]]
-  (list (symbol (name aggr-type)) (field-lvar field-ref)))
+(list (symbol (name aggr-type)) (field-lvar field-ref)))
 
 (defmethod aggregation-clause :count [mbqry [_ field-ref]]
-  (cond
-    field-ref
-    (%count% (field-lvar field-ref))
+(cond
+  field-ref
+  (%count% (field-lvar field-ref))
 
-    (source-table)
-    (%count% (table-lvar (source-table)))
+  (source-table)
+  (%count% (table-lvar (source-table)))
 
-    :else
-    (assert false "Count without field is not supported on native sub-queries.")))
+  :else
+  (assert false "Count without field is not supported on native sub-queries.")))
 
 (defmethod aggregation-clause :distinct [mbqry [_ field-ref]]
-  (%count-distinct% (field-lvar field-ref)))
+(%count-distinct% (field-lvar field-ref)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmulti value-literal
-  "Extracts the value literal out of and coerce to the DB type.
+"Extracts the value literal out of and coerce to the DB type.
 
      [:value 40
       {:base_type :type/Float
        :special_type :type/Latitude
        :database_type \"db.type/double\"}]
     ;;=> 40"
-  (fn [[type :as clause]] type))
+(fn [[type :as clause]] type))
 
 (defmethod value-literal :default [clause]
-  (assert false (str "Unrecognized value clause: " clause)))
+(assert false (str "Unrecognized value clause: " clause)))
 
 (defmethod value-literal :value [[t v f]]
+(if (and (nil? v) (not= "db.type/ref" (:database_type f)))
+  NIL
   (case (:database_type f)
     "db.type/ref"
-    (if (string? v)
-      (if (some #{\/} v)
-        (keyword v)
-        (Long/parseLong v))
+    (cond
+      (nil? v)
+      NIL-REF
+
+      (and (string? v) (some #{\/} v))
+      (keyword v)
+
+      (string? v)
+      (Long/parseLong v)
+
+      :else
       v)
 
     "db.type/string"
@@ -445,72 +471,89 @@
       (java.net.URI. v)
       v)
 
-    v))
+    v)))
 
 (defmethod value-literal :absolute-datetime [[_ inst unit]]
-  (metabase.util.date/date-trunc-or-extract unit inst (timezone-id)))
+(metabase.util.date/date-trunc-or-extract unit inst (timezone-id)))
 
 (defmethod value-literal :relative-datetime [[_ offset unit]]
-  (if (= :current offset)
-    (java.util.Date.)
-    (metabase.util.date/relative-date unit offset)))
+(if (= :current offset)
+  (java.util.Date.)
+  (metabase.util.date/relative-date unit offset)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmulti filter-clauses
-  "Convert an MBQL :filter form into Datalog :where clauses
+"Convert an MBQL :filter form into Datalog :where clauses
 
   [:= [:field-id 45] [:value 20]]
   ;;=> [[?user :user/age 20]]"
-  (fn [[clause-type _]]
-    clause-type))
+(fn [[clause-type _]]
+  clause-type))
 
 (defmethod filter-clauses := [[_ field-ref [_ _ {base-type :base_type
                                                  :as       field-inst}
                                             :as vclause]]]
-  (constant-binding field-ref (value-literal vclause)))
+(constant-binding field-ref (value-literal vclause)))
 
 (defmethod filter-clauses :and [[_ & clauses]]
-  (into [] (mapcat filter-clauses) clauses))
+(into [] (mapcat filter-clauses) clauses))
 
 (defn logic-vars
-  "Recursively find all logic var symbols starting with a question mark."
+"Recursively find all logic var symbols starting with a question mark."
+[clause]
+(cond
+  (coll? clause)
+  (into #{} (mapcat logic-vars) clause)
+
+  (and (symbol? clause)
+       (= \? (first (name clause))))
   [clause]
-  (cond
-    (coll? clause)
-    (into #{} (mapcat logic-vars) clause)
 
-    (and (symbol? clause)
-         (= \? (first (name clause))))
-    [clause]
+  :else
+  []))
 
-    :else
-    []))
+(defn or-join
+"Takes a sequence of sequence of datalog :where clauses, each inner sequence is
+  considered a single logical group, where clauses within one group are
+  considered logical conjunctions (and), and generates an or-join, unifying
+  those lvars that are present in all clauses.
+
+  (or-join '[[[?venue :venue/location ?loc]
+              [?loc :location/city \"New York\"]]
+             [[?venue :venue/size 1000]]])
+  ;;=>
+  [(or-join [?venue]
+      (and [?venue :venue/location ?loc]
+           [?loc :location/city \"New York\"])
+      [?venue :venue/size 1000])] "
+[clauses]
+(let [lvars   (apply set/intersection (map logic-vars clauses))]
+  (assert (pos-int? (count lvars))
+    (str "No logic variables found to unify across [:or] in " (pr-str `[:or ~@clauses])))
+
+  ;; Only bind any logic vars shared by all clauses in the outer clause. This
+  ;; will prevent Datomic from complaining, but could potentially be too
+  ;; naive. Since typically all clauses filter the same entity though this
+  ;; should generally be good enough.
+  [`(~'or-join [~@lvars]
+     ~@(map (fn [c]
+              (if (= (count c) 1)
+                (first c)
+                (cons 'and c)))
+            clauses))]))
+
 
 (defmethod filter-clauses :or [[_ & clauses]]
-  (let [clauses (map filter-clauses clauses)
-        lvars   (apply set/intersection (map logic-vars clauses))]
-    (assert (pos-int? (count lvars))
-      (str "No logic variables found to unify across [:or] in " (pr-str `[:or ~@clauses])))
-
-    ;; Only bind any logic vars shared by all clauses in the outer clause. This
-    ;; will prevent Datomic from complaining, but could potentially be too
-    ;; naive. Since typically all clauses filter the same entity though this
-    ;; should generally be good enough.
-    [`(~'or-join [~@lvars]
-       ~@(map (fn [c]
-                (if (= (count c) 1)
-                  (first c)
-                  (cons 'and c)))
-              clauses))]))
+(or-join (map filter-clauses clauses)))
 
 (defmethod filter-clauses :< [[_ field value]]
-  (conj (field-bindings field)
-        [`(util/lt ~(field-lvar field) ~(value-literal value))]))
+(conj (field-bindings field)
+      [`(util/lt ~(field-lvar field) ~(value-literal value))]))
 
 (defmethod filter-clauses :> [[_ field value]]
-  (conj (field-bindings field)
-        [`(util/gt ~(field-lvar field) ~(value-literal value))]))
+(conj (field-bindings field)
+      [`(util/gt ~(field-lvar field) ~(value-literal value))]))
 
 (defmethod filter-clauses :<= [[_ field value]]
   (conj (field-bindings field)
@@ -529,6 +572,35 @@
         [[`(util/lte ~(value-literal min-val) ~(field-lvar field))]
          [`(util/lte ~(field-lvar field) ~(value-literal max-val))]]))
 
+(defmethod filter-clauses :starts-with [[_ field value opts]]
+  (conj (field-bindings field)
+        [`(util/str-starts-with? ~(field-lvar field)
+                                 ~(value-literal value)
+                                 ~(merge {:case-sensitive true} opts))]))
+
+(defmethod filter-clauses :contains [[_ field value opts]]
+  (conj (field-bindings field)
+        [`(util/str-contains? ~(field-lvar field)
+                              ~(value-literal value)
+                              ~(merge {:case-sensitive true} opts))]))
+
+(defmethod filter-clauses :not [[_ [_ field :as pred]]]
+  (let [negate (fn [[e a :as pred]]
+                 (if (= 'not e)
+                   a
+                   (list 'not pred)))
+        pred-clauses (filter-clauses pred)
+        {bindings true
+         predicates false} (group-by (fn [[e a v :as clause]]
+                                       (or (and (simple-symbol? e)
+                                                (qualified-keyword? a)
+                                                (simple-symbol? v))
+                                           (and (list? e)
+                                                (= 'get-else (first e)))))
+                                     pred-clauses)]
+    (if (= 1 (count predicates))
+      (conj bindings (negate (first predicates)))
+      (conj bindings (cons 'not predicates)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; MBQL top level constructs
@@ -583,26 +655,7 @@
     (-> dqry
         (into-clause-uniq :find (map field-lvar) fields)
         (into-clause :select (map field-lvar) fields)
-        (into-clause :where (mapcat field-bindings) fields)
-
-        #_(cond-> #_dqry
-            (seq join-tables)
-            (-> (into-clause :find
-                             (map (fn [{:keys [table-id fk-field-id pk-field-id]}]
-                                    (table-lvar
-                                     [:fk->
-                                      [:field-id fk-field-id]
-                                      [:field-id pk-field-id]])))
-                             join-tables)
-                (into-clause-uniq :where
-                                  (map (fn [{:keys [table-id fk-field-id pk-field-id]}]
-                                         [(table-lvar source-table)
-                                          (->attrib [:field-id fk-field-id])
-                                          (table-lvar
-                                           [:fk->
-                                            [:field-id fk-field-id]
-                                            [:field-id pk-field-id]])]))
-                                  join-tables))))
+        (into-clause :where (mapcat field-bindings) fields))
     dqry))
 
 ;; breakouts with aggregation = GROUP BY
@@ -612,10 +665,7 @@
     (-> dqry
         (into-clause-uniq :find (map field-lvar) breakout)
         (into-clause-uniq :where (mapcat field-bindings) breakout)
-        (into-clause :select (map (partial field-lookup mbqry)) breakout)
-        #_(cond-> #_dqry
-            (empty? aggregation)
-            (into-clause :with (map table-lvar) breakout)))
+        (into-clause :select (map (partial field-lookup mbqry)) breakout))
     dqry))
 
 (defmulti apply-aggregation (fn [mbqry dqry aggregation]

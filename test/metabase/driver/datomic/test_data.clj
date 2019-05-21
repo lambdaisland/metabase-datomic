@@ -20,4 +20,14 @@
      ["DE" "Germany"]
      ["FI" "Finnland"]]]])
 
+(tx/def-database-definition with-nulls
+  [["country"
+    [{:field-name "code" :base-type :type/Text}
+     {:field-name "name" :base-type :type/Text}
+     {:field-name "population" :base-type :type/Integer}
+     ]
+    [["BE" "Belgium" 11000000]
+     ["DE" "Germany"]
+     ["FI" "Finnland"]]]])
+
 #_(user.setup/remove-database "countries")

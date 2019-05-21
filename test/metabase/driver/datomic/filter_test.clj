@@ -2,7 +2,9 @@
   (:require [clojure.test :refer :all]
             [metabase.driver.datomic.test :refer :all]
             [metabase.test.data :as data]
-            [metabase.test.util.timezone :as tu.tz]))
+            [metabase.test.util.timezone :as tu.tz]
+            [metabase.api.dataset :as dataset]
+            [metabase.driver.datomic.test-data :as test-data]))
 
 (deftest and-gt-gte
   (is (match? {:data {:rows [[pos-int? "Sushi Nakazawa" pos-int? 40.7318 -74.0045 4]
@@ -101,376 +103,279 @@
            {:filter   [:or [:<= $latitude 33.9] [:= $name "The Apple Pan"]]
             :order-by [[:asc [:field-id (data/id "venues" "db/id")]]]})))))
 
-(comment
+(deftest starts-with
+  (is (match? {:data {:columns ["name"],
+                      :rows    []}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:fields   [$name]
+                   :filter   [:starts-with $name "CHE"]
+                   :order-by [[:asc [:field-id (data/id "venues" "db/id")]]]}))))
+
+  (is (match? {:data {:columns ["name"],
+                      :rows    [["Cheese Steak Shop"] ["Chez Jay"]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:fields   [$name]
+                   :filter   [:starts-with $name "CHE" {:case-sensitive false}]
+                   :order-by [[:asc [:field-id (data/id "venues" "db/id")]]]})))))
+
+(deftest ends-with
+  (is (match? {:data {:columns ["name" "latitude" "longitude" "price"]
+                      :rows    [["Brite Spot Family Restaurant" 34.0778 -118.261 2]
+                                ["Don Day Korean Restaurant"    34.0689 -118.305 2]
+                                ["Ruen Pair Thai Restaurant"    34.1021 -118.306 2]
+                                ["Tu Lan Restaurant"            37.7821 -122.41  1]
+                                ["Dal Rae Restaurant"           33.983  -118.096 4]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:fields   [$name $latitude $longitude $price]
+                   :filter   [:ends-with $name "Restaurant"]
+                   :order-by [[:asc (data/id "venues" "db/id")]]}))))
+
+  (is (match? {:data {:columns ["name" "latitude" "longitude" "price"]
+                      :rows    []}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:fields   [$name $latitude $longitude $price]
+                   :filter   [:ends-with $name "RESTAURANT" {:case-sensitive true}]
+                   :order-by [[:asc (data/id "venues" "db/id")]]}))))
+
+  (is (match? {:data {:columns ["name" "latitude" "longitude" "price"]
+                      :rows    [["Brite Spot Family Restaurant" 34.0778 -118.261 2]
+                                ["Don Day Korean Restaurant"    34.0689 -118.305 2]
+                                ["Ruen Pair Thai Restaurant"    34.1021 -118.306 2]
+                                ["Tu Lan Restaurant"            37.7821 -122.41  1]
+                                ["Dal Rae Restaurant"           33.983  -118.096 4]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:fields   [$name $latitude $longitude $price]
+                   :filter   [:ends-with $name "RESTAURANT" {:case-sensitive false}]
+                   :order-by [[:asc (data/id "venues" "db/id")]]})))))
+
+(deftest contains-test
+  (is (match? {:data {:rows []}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:filter   [:contains $name "bbq"]
+                   :order-by [[:asc (data/id "venues" "db/id")]]}))))
+
+  (is (match? {:data {:rows [["Bludso's BBQ" 2]
+                             ["Beachwood BBQ & Brewing" 2]
+                             ["Baby Blues BBQ" 2]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:fields   [$name $price]
+                   :filter   [:contains $name "BBQ"]
+                   :order-by [[:asc (data/id "venues" "db/id")]]}))))
+
+  (is (match? {:data {:rows [["Bludso's BBQ" 2]
+                             ["Beachwood BBQ & Brewing" 2]
+                             ["Baby Blues BBQ" 2]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:fields   [$name $price]
+                   :filter   [:contains $name "bbq" {:case-sensitive false}]
+                   :order-by [[:asc (data/id "venues" "db/id")]]})))))
+
+(deftest nestend-and-or
+  (is (match? {:data {:rows [[81]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:and
+                                 [:!= $price 3]
+                                 [:or
+                                  [:= $price 1]
+                                  [:= $price 2]]]})))))
+
+(deftest =-!=-multiple-values
+  (is (match? {:data {:rows [[81]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:= $price 1 2]}))))
+
+  (is (match? {:data {:rows [[19]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:!= $price 1 2]})))))
+
+(deftest not-filter
+  (is (match? {:data {:rows [[41]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:= $price 2]]}))))
+
+  (is (match? {:data {:rows [[59]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:!= $price 2]]}))))
+
+  (is (match? {:data {:rows [[78]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:< $price 2]]}))))
+
+  (is (match? {:data {:rows [[81]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:> $price 2]]}))))
+
+  (is (match? {:data {:rows [[19]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:<= $price 2]]}))))
+
+  (is (match? {:data {:rows [[22]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:>= $price 2]]}))))
+
+  (is (match? {:data {:rows [[22]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:between $price 2 4]]}))))
+
+  (is (match? {:data {:rows [[80]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:starts-with $name "T"]]}))))
+
+  (is (match? {:data {:rows [[3]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:not [:contains $name "BBQ"]]]}))))
+
+  (is (match? {:data {:rows [[97]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:contains $name "BBQ"]]}))))
+
+  (is (match? {:data {:rows [[97]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:does-not-contain $name "BBQ"]}))))
+
+  (is (match? {:data {:rows [[3]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter [:and
+                            [:not [:> $price 2]]
+                            [:contains $name "BBQ"]]}))))
+
+  (is (match? {:data {:rows [[87]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:ends-with $name "a"]]}))))
+
+  (is (match? {:data {:rows [[84]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter [:not [:and
+                                  [:contains $name "ar"]
+                                  [:< $price 4]]]}))))
+
+  (is (match? {:data {:rows [[4]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter [:not [:or
+                                  [:contains $name "ar"]
+                                  [:< $price 4]]]}))))
+
+  (is (match? {:data {:rows [[24]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter [:not [:or
+                                  [:contains $name "ar"]
+                                  [:and
+                                   [:> $price 1]
+                                   [:< $price 4]]]]})))))
+
+(deftest is-null
+  (is (match? {:data {:rows [["DE" nil]
+                             ["FI" nil]]}}
+              (with-datomic
+                (data/with-temp-db [_ test-data/with-nulls]
+                  (data/run-mbql-query country
+                    {:fields [$code $population]
+                     :filter [:is-null $population]
+                     :order-by [[:asc $code]]})))))
+
+  (is (match? {:data {:rows [["BE" 11000000]]}}
+              (with-datomic
+                (data/with-temp-db [_ test-data/with-nulls]
+                  (data/run-mbql-query country
+                    {:fields [$code $population]
+                     :filter [:not [:is-null $population]]}))))))
+
+(deftest inside
+  ;; This is converted to [:and [:between ..] [:between ..]] so we get this one for free
+  (is (match? {:data {:rows [["Red Medicine" 10.0646 -165.374 3]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:fields [$name $latitude $longitude $price]
+                   :filter [:inside $latitude $longitude 10.0649 -165.379 10.0641 -165.371]}))))
+
+  (is (match? {:data {:rows [[39]]}}
+              (with-datomic
+                (data/run-mbql-query venues
+                  {:aggregation [[:count]]
+                   :filter      [:not [:inside $latitude $longitude 40 -120 30 -110]]})))))
 
 
-
-
-
-
-;;; +----------------------------------------------------------------------------------------------------------------+
-;;; |                            STRING SEARCH FILTERS - CONTAINS, STARTS-WITH, ENDS-WITH                            |
-;;; +----------------------------------------------------------------------------------------------------------------+
-
-;;; -------------------------------------------------- starts-with ---------------------------------------------------
-
-  (expect-with-non-timeseries-dbs
-   [[41 "Cheese Steak Shop" 18 37.7855 -122.44  1]
-    [74 "Chez Jay"           2 34.0104 -118.493 2]]
-   (-> (data/run-mbql-query venues
-         {:filter   [:starts-with $name "Che"]
-          :order-by [[:asc $id]]})
-       rows formatted-venues-rows))
-
-  (datasets/expect-with-drivers (non-timeseries-drivers-with-feature :case-sensitivity-string-filter-options)
-                                []
-                                (-> (data/run-mbql-query venues
-                                      {:filter   [:starts-with $name "CHE"]
-                                       :order-by [[:asc $id]]})
-                                    rows formatted-venues-rows))
-
-  (datasets/expect-with-drivers (non-timeseries-drivers-with-feature :case-sensitivity-string-filter-options)
-                                [[41 "Cheese Steak Shop" 18 37.7855 -122.44  1]
-                                 [74 "Chez Jay"           2 34.0104 -118.493 2]]
-                                (-> (data/run-mbql-query venues
-                                      {:filter   [:starts-with $name "CHE" {:case-sensitive false}]
-                                       :order-by [[:asc $id]]})
-                                    rows formatted-venues-rows))
-
-
-;;; --------------------------------------------------- ends-with ----------------------------------------------------
-
-  (expect-with-non-timeseries-dbs
-   [[ 5 "Brite Spot Family Restaurant" 20 34.0778 -118.261 2]
-    [ 7 "Don Day Korean Restaurant"    44 34.0689 -118.305 2]
-    [17 "Ruen Pair Thai Restaurant"    71 34.1021 -118.306 2]
-    [45 "Tu Lan Restaurant"             4 37.7821 -122.41  1]
-    [55 "Dal Rae Restaurant"           67 33.983  -118.096 4]]
-   (-> (data/run-mbql-query venues
-         {:filter   [:ends-with $name "Restaurant"]
-          :order-by [[:asc $id]]})
-       rows formatted-venues-rows))
-
-  (datasets/expect-with-drivers (non-timeseries-drivers-with-feature :case-sensitivity-string-filter-options)
-                                []
-                                (-> (data/run-mbql-query venues
-                                      {:filter   [:ends-with $name "RESTAURANT"]
-                                       :order-by [[:asc $id]]})
-                                    rows formatted-venues-rows))
-
-  (datasets/expect-with-drivers (non-timeseries-drivers-with-feature :case-sensitivity-string-filter-options)
-                                [[ 5 "Brite Spot Family Restaurant" 20 34.0778 -118.261 2]
-                                 [ 7 "Don Day Korean Restaurant"    44 34.0689 -118.305 2]
-                                 [17 "Ruen Pair Thai Restaurant"    71 34.1021 -118.306 2]
-                                 [45 "Tu Lan Restaurant"             4 37.7821 -122.41  1]
-                                 [55 "Dal Rae Restaurant"           67 33.983  -118.096 4]]
-                                (-> (data/run-mbql-query venues
-                                      {:filter   [:ends-with $name "RESTAURANT" {:case-sensitive false}]
-                                       :order-by [[:asc $id]]})
-                                    rows formatted-venues-rows))
-
-;;; ---------------------------------------------------- contains ----------------------------------------------------
-  (expect-with-non-timeseries-dbs
-   [[31 "Bludso's BBQ"             5 33.8894 -118.207 2]
-    [34 "Beachwood BBQ & Brewing" 10 33.7701 -118.191 2]
-    [39 "Baby Blues BBQ"           5 34.0003 -118.465 2]]
-   (-> (data/run-mbql-query venues
-         {:filter   [:contains $name "BBQ"]
-          :order-by [[:asc $id]]})
-       rows formatted-venues-rows))
-
-  ;; case-insensitive
-  (datasets/expect-with-drivers (non-timeseries-drivers-with-feature :case-sensitivity-string-filter-options)
-                                []
-                                (-> (data/run-mbql-query venues
-                                      {:filter   [:contains $name "bbq"]
-                                       :order-by [[:asc $id]]})
-                                    rows formatted-venues-rows))
-
-  ;; case-insensitive
-  (datasets/expect-with-drivers (non-timeseries-drivers-with-feature :case-sensitivity-string-filter-options)
-                                [[31 "Bludso's BBQ"             5 33.8894 -118.207 2]
-                                 [34 "Beachwood BBQ & Brewing" 10 33.7701 -118.191 2]
-                                 [39 "Baby Blues BBQ"           5 34.0003 -118.465 2]]
-                                (-> (data/run-mbql-query venues
-                                      {:filter   [:contains $name "bbq" {:case-sensitive false}]
-                                       :order-by [[:asc $id]]})
-                                    rows formatted-venues-rows))
-
-
-;;; +----------------------------------------------------------------------------------------------------------------+
-;;; |                                             NESTED AND/OR CLAUSES                                              |
-;;; +----------------------------------------------------------------------------------------------------------------+
-
-  (expect-with-non-timeseries-dbs
-   [[81]]
-   (->> (data/run-mbql-query venues
-          {:aggregation [[:count]]
-           :filter      [:and
-                         [:!= $price 3]
-                         [:or
-                          [:= $price 1]
-                          [:= $price 2]]]})
-        rows (format-rows-by [int])))
-
-
-;;; +----------------------------------------------------------------------------------------------------------------+
-;;; |                                         = AND != WITH MULTIPLE VALUES                                          |
-;;; +----------------------------------------------------------------------------------------------------------------+
-
-  (expect-with-non-timeseries-dbs
-   [[81]]
-   (->> (data/run-mbql-query venues
-          {:aggregation [[:count]]
-           :filter      [:= $price 1 2]})
-        rows (format-rows-by [int])))
-
-  (expect-with-non-timeseries-dbs
-   [[19]]
-   (->> (data/run-mbql-query venues
-          {:aggregation [[:count]]
-           :filter      [:!= $price 1 2]})
-        rows (format-rows-by [int])))
-
-
-;;; +----------------------------------------------------------------------------------------------------------------+
-;;; |                                                   NOT FILTER                                                   |
-;;; +----------------------------------------------------------------------------------------------------------------+
-
-  ;; `not` filter -- Test that we can negate the various other filter clauses
-  ;;
-  ;; The majority of these tests aren't necessary since `not` automatically translates them to simpler, logically
-  ;; equivalent expressions but I already wrote them so in this case it doesn't hurt to have a little more test coverage
-  ;; than we need
-  ;;
-
-;;; =
-  (expect-with-non-timeseries-dbs
-   [99]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:= $id 1]]}))))
-
-;;; !=
-  (expect-with-non-timeseries-dbs
-   [1]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:!= $id 1]]}))))
-;;; <
-  (expect-with-non-timeseries-dbs
-   [61]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:< $id 40]]}))))
-
-;;; >
-  (expect-with-non-timeseries-dbs
-   [40]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:> $id 40]]}))))
-
-;;; <=
-  (expect-with-non-timeseries-dbs
-   [60]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:<= $id 40]]}))))
-
-;;; >=
-  (expect-with-non-timeseries-dbs
-   [39]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:>= $id 40]]}))))
-
-;;; is-null
-  (expect-with-non-timeseries-dbs
-   [100]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:is-null $id]]}))))
-
-;;; between
-  (expect-with-non-timeseries-dbs
-   [89]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:between $id 30 40]]}))))
-
-;;; inside
-  (expect-with-non-timeseries-dbs
-   [39]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:inside $latitude $longitude 40 -120 30 -110]]}))))
-
-;;; starts-with
-  (expect-with-non-timeseries-dbs
-   [80]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:starts-with $name "T"]]}))))
-
-;;; contains
-  (expect-with-non-timeseries-dbs
-   [97]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:contains $name "BBQ"]]}))))
-
-;;; does-not-contain
-  ;;
-  ;; This should literally be the exact same query as the one above by the time it leaves the Query eXpander, so this is
-  ;; more of a QX test than anything else
-  (expect-with-non-timeseries-dbs
-   [97]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:does-not-contain $name "BBQ"]}))))
-
-;;; ends-with
-  (expect-with-non-timeseries-dbs
-   [87]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:ends-with $name "a"]]}))))
-
-;;; and
-  (expect-with-non-timeseries-dbs
-   [98]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:and
-                                           [:> $id 32]
-                                           [:contains $name "BBQ"]]]}))))
-;;; or
-  (expect-with-non-timeseries-dbs
-   [31]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:or
-                                           [:> $id 32]
-                                           [:contains $name "BBQ"]]]}))))
-
-;;; nested and/or
-  (expect-with-non-timeseries-dbs
-   [96]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:or
-                                           [:and
-                                            [:> $id 32]
-                                            [:< $id 35]]
-                                           [:contains $name "BBQ"]]]}))))
-
-;;; nested not
-  (expect-with-non-timeseries-dbs
-   [3]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:not [:not [:contains $name "BBQ"]]]}))))
-
-;;; not nested inside and/or
-  (expect-with-non-timeseries-dbs
-   [1]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query venues
-                      {:aggregation [[:count]]
-                       :filter      [:and
-                                     [:not [:> $id 32]]
-                                     [:contains $name "BBQ"]]}))))
-
-
+;; These are related to historical bugs in Metabase itself, we simply copied
+;; these over to make sure we can handle these cases.
+(deftest edge-cases
   ;; make sure that filtering with dates truncating to minutes works (#4632)
-  (expect-with-non-timeseries-dbs
-   [107]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query checkins
-                      {:aggregation [[:count]]
-                       :filter      [:between [:datetime-field $date :minute] "2015-01-01T12:30:00" "2015-05-31"]}))))
+  (is (match? {:data {:rows [[107]]}}
+              (with-datomic
+                (data/run-mbql-query checkins
+                  {:aggregation [[:count]]
+                   :filter      [:between [:datetime-field $date :minute] "2015-01-01T12:30:00" "2015-05-31"]}))))
 
   ;; make sure that filtering with dates bucketing by weeks works (#4956)
-  (expect-with-non-timeseries-dbs
-   [7]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query checkins
-                      {:aggregation [[:count]]
-                       :filter      [:= [:datetime-field $date :week] "2015-06-21T07:00:00.000000000-00:00"]}))))
+  (is (match? {:data {:rows [[7]]}}
+              (with-datomic
+                (tu.tz/with-jvm-tz "UTC"
+                  (data/run-mbql-query checkins
+                    {:aggregation [[:count]]
+                     :filter      [:= [:datetime-field $date :week] "2015-06-21T07:00:00.000000000-00:00"]})))))
 
+  ;; FILTER - `is-null` & `not-null` on datetime columns
+  (is (match? {:data {:rows [[1000]]}}
+              (with-datomic
+                (data/run-mbql-query checkins
+                  {:aggregation [[:count]]
+                   :filter      [:not-null $date]}))))
 
+  (is (match? {:data {:rows [[1000]]}}
+              (with-datomic
+                (data/run-mbql-query checkins
+                  {:aggregation [[:count]]
+                   :filter      ["NOT_NULL"
+                                 ["field-id"
+                                  ["field-literal" (data/format-name "date") "type/DateTime"]]]}))))
 
-;;; FILTER -- "INSIDE"
-  (expect-with-non-timeseries-dbs
-   [[1 "Red Medicine" 4 10.0646 -165.374 3]]
-   (-> (data/run-mbql-query venues
-         {:filter [:inside $latitude $longitude 10.0649 -165.379 10.0641 -165.371]})
-       rows formatted-venues-rows))
-
-;;; FILTER - `is-null` & `not-null` on datetime columns
-  (expect-with-non-timeseries-dbs
-   [1000]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query checkins
-                      {:aggregation [[:count]]
-                       :filter      [:not-null $date]}))))
-
-  ;; Creates a query that uses a field-literal. Normally our test queries will use a field placeholder, but
-  ;; https://github.com/metabase/metabase/issues/7381 is only triggered by a field literal
-  (expect-with-non-timeseries-dbs
-   [1000]
-   (first-row
-    (format-rows-by [int]
-                    (data/run-mbql-query checkins
-                      {:aggregation [[:count]]
-                       :filter      ["NOT_NULL"
-                                     ["field-id"
-                                      ["field-literal" (data/format-name "date") "type/DateTime"]]]}))))
-
-  (expect-with-non-timeseries-dbs
-   true
-   (let [result (first-row (data/run-mbql-query checkins
-                             {:aggregation [[:count]]
-                              :filter      [:is-null $date]}))]
-     ;; Some DBs like Mongo don't return any results at all in this case, and there's no easy workaround
-     (contains? #{[0] [0M] [nil] nil} result)))
-  )
+  (is (match? {:data {:rows [[0]]}}
+              (with-datomic
+                (data/run-mbql-query checkins
+                  {:aggregation [[:count]]
+                   :filter      [:is-null $date]})))))

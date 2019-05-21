@@ -1,5 +1,6 @@
 (ns metabase.driver.datomic.util
-  (:import java.util.Date))
+  (:import java.util.Date)
+  (:require [clojure.string :as str]))
 
 (defn kw->str [s]
   (str (namespace s) "/" (name s)))
@@ -71,3 +72,24 @@
     (and (keyword? y) (<= (.compareTo (name x) (name y)) 0)))
   (gte [x y]
     (and (keyword? y) (<= (.compareTo (name x) (name y)) 0))))
+
+(defn str-starts-with? [s prefix {case? :case-sensitive}]
+  (if case?
+    (str/starts-with? (str s)
+                      (str prefix))
+    (str/starts-with? (str/lower-case (str s))
+                      (str/lower-case (str prefix)))))
+
+(defn str-ends-with? [s prefix {case? :case-sensitive}]
+  (if case?
+    (str/ends-with? (str s)
+                    (str prefix))
+    (str/ends-with? (str/lower-case (str s))
+                    (str/lower-case (str prefix)))))
+
+(defn str-contains? [s prefix {case? :case-sensitive}]
+  (if case?
+    (str/includes? (str s)
+                   (str prefix))
+    (str/includes? (str/lower-case (str s))
+                   (str/lower-case (str prefix)))))
