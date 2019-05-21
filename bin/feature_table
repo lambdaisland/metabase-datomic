@@ -72,16 +72,32 @@ def indent(n)
   raw("&nbsp;" * n)
 end
 
+def render_value(value)
+  if value.is_a?(Array)
+    if value.empty?
+      nil
+    else
+      if value.all? {|v| render_value(v.first.last)}
+        true
+      else
+        nil
+      end
+    end
+  else
+    value
+  end
+end
+
 def subfeature_table(key, value)
   [[:tr,
     [:td, {align: "left"}, indent(4), key],
-    [:td, {align: "center"}, (value.is_a?(Array) ? "" : value)]],
+    [:td, {align: "center"}, render_value(value).to_html]],
    *(value.is_a?(Array) ? value : []).map do |v|
      key = v.first.first
      value = v.first.last
      [:tr,
       [:td, {align: "left"}, indent(8), key],
-      [:td, {align: "center"}, (value.is_a?(Array) ? "" : value)]]
+      [:td, {align: "center"}, render_value(value).to_html]]
    end
   ]
 end
@@ -93,7 +109,7 @@ def feature_table(yaml)
     [
       [:tr,
        [:th, {align: "left"}, feature],
-       [:th, {align: "center"}, (value.is_a?(String) ? value : "")]
+       [:th, {align: "center"}, render_value(value).to_html]
       ],
       *(value.is_a?(Array) ? value : []).flat_map do |s|
         subfeature_table(s.first.first, s.first.last)
