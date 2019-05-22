@@ -32,8 +32,8 @@
     - "{:aggregation aggregation-clause}":
         - "[:count]": Yes
         - "[:count concrete-field]": Yes
-        - "[:cum-count concrete-field]":
-        - "[:cum-sum concrete-field]":
+        - "[:cum-count concrete-field]": Yes
+        - "[:cum-sum concrete-field]": Yes
         - "[:distinct concrete-field]": Yes
         - "[:sum concrete-field]": Yes
         - "[:min concrete-field]": Yes
