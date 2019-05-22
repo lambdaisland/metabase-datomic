@@ -325,7 +325,7 @@ Architecture Decisions]] by Michael Nygard.
    #+begin_src clojure
    (or-join [?ledger ?ledger|ledger|tax-entries]
             [?ledger :ledger/tax-entries ?ledger|ledger|tax-entries]
-            (and [?ledger]
+            (and [(missing? $ ?ledger :ledger/tax-entries)]
                  [(ground Long/MIN_VALUE) ?ledger|ledger|tax-entries]))
    #+end_src
 
