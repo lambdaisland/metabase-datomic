@@ -82,11 +82,6 @@
 
 (def ^:dynamic *settings* {})
 
-(def ^:dynamic
-  *db*
-  "Datomic db, for when we need to inspect the schema during query generation."
-  nil)
-
 (def ^:dynamic *mbqry* nil)
 
 (defn- timezone-id
@@ -95,6 +90,26 @@
 
 (defn source-table []
   (:source-table *mbqry* (:source-table (:source-query *mbqry*))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def ^:dynamic
+  *db*
+  "Datomic db, for when we need to inspect the schema during query generation."
+  nil)
+
+(defn cardinality-many?
+  "Is the given keyword an reference attribute with cardinality/many?"
+  [attr]
+  (= :db.cardinality/many (:db/cardinality (d/entity *db* attr))))
+
+(defn attr-type [ident]
+  (get-in
+   (d/pull *db* [{:db/valueType [:db/ident]}] ident)
+   [:db/valueType :db/ident]))
+
+(defn entid [ident]
+  (d/entid *db* ident))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Datalog query helpers
@@ -167,6 +182,26 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defmulti field-inst
+  "Given an MBQL field reference, return the metabase.model.Field instance. May
+  return nil."
+  mbql.u/dispatch-by-clause-name-or-class)
+
+(defmethod field-inst :field-id [[_ id]]
+  (qp.store/field id))
+
+(defmethod field-inst :fk-> [[_ src _]]
+  (field-inst src))
+
+(defmethod field-inst :datetime-field [[_ field _]]
+  (field-inst field))
+
+(defmethod field-inst :field-literal [[_ literal]]
+  (when-let [table (source-table)]
+    (db/select-one Field :table_id table :name literal)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;; [:field-id 55] => ?artist
 (defmulti table-lvar
   "Return a logic variable name (a symbol starting with '?') corresponding with
@@ -186,11 +221,10 @@
   (table-lvar (qp.store/field field-id)))
 
 (defmethod table-lvar :fk-> [[_ src dst]]
-  (symbol (str (field-lvar src) "->" (subs (str (table-lvar dst)) 1))))
+  (field-lvar src))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def field-lookup nil)
 (defmulti field-lookup
   "Turn an MBQL field reference into something we can stick into our
   pseudo-datalag :select or :order-by clauses. In some cases we stick the same
@@ -207,13 +241,14 @@
     (mbql.u/dispatch-by-clause-name-or-class field-ref)))
 
 (defmethod field-lookup :default [_ field-ref]
-  (field-lvar field-ref))
+  `(field ~(field-lvar field-ref)
+          ~(select-keys (field-inst field-ref) [:database_type :base_type :special_type])))
 
 (defmethod field-lookup :aggregation [mbqry [_ idx]]
   (aggregation-clause mbqry (nth (:aggregation mbqry) idx)))
 
 (defmethod field-lookup :datetime-field [mbqry [_ fref unit]]
-  `(datetime ~(field-lookup mbqry fref) ~unit))
+  `(datetime ~(field-lvar fref) ~unit))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -229,9 +264,11 @@
   (symbol
    (str "?" (str/join "|" (map (fn [p]
                                  (let [s (str p)]
-                                   (if (= \? (first s))
-                                     (subs s 1)
-                                     s)))
+                                   (cond-> s
+                                     (= \: (first s))
+                                     (subs 1)
+                                     (= \? (first s))
+                                     (subs 1))))
                                parts)))))
 
 ;; "[:field-id 45] ;;=> ?artist|artist|name"
@@ -297,27 +334,29 @@
    :db.type/uri     (URI. (str "nil" ::nil))
    :db.type/uuid    (UUID/randomUUID)})
 
-(defn cardinality-many?
-  "Is the given keyword an reference attribute with cardinality/many?"
-  [attr]
-  (= :db.cardinality/many (:db/cardinality (d/entity *db* attr))))
+(def ^:dynamic *strict-bindings* false)
 
-(defn attr-type [ident]
-  (get-in
-   (d/pull *db* [{:db/valueType [:db/ident]}] ident)
-   [:db/valueType :db/ident]))
+(defmacro with-strict-bindings [& body]
+  `(binding [*strict-bindings* true]
+     ~@body))
 
 (defn bind-attr
   "Datalog EAV binding that unifies to NIL if the attribute is not present, the
   equivalent of a left join, so we can look up attributes without filtering the
-  result at the same time."
+  result at the same time.
+
+  Will do a simple [e a v] binding when *strict-bindings* is true."
   [?e a ?v]
-  (if (cardinality-many? a)
-    ;; get-else is not supported on cardinality/many
-    (list 'or-join [?e ?v]
-          [?e a ?v]
-          (list 'and [?e] [(list 'ground NIL-REF) ?v]))
-    [(%get-else% '$ ?e a (NIL_VALUES (attr-type a) ::nil)) ?v]))
+  (if *strict-bindings*
+    [?e a ?v]
+    (if (cardinality-many? a)
+      ;; get-else is not supported on cardinality/many
+      (list 'or-join [?e ?v]
+            [?e a ?v]
+            (list 'and
+                  [(list 'missing? '$ ?e a)]
+                  [(list 'ground NIL-REF) ?v]))
+      [(%get-else% '$ ?e a (NIL_VALUES (attr-type a) ::nil)) ?v])))
 
 (defn date-trunc-or-extract-some [unit date]
   (if (= NIL date)
@@ -351,7 +390,7 @@
   ;; Datomic complaining about insufficient bindings.
   (if-let [table (source-table)]
     (let [attr (keyword (:name (qp.store/table table)) literal)]
-      (if (:db/valueType (d/entity *db* attr))
+      (if (attr-type attr)
         [(bind-attr (table-lvar table) attr (field-lvar field-ref))]
         [attr]))
     []))
@@ -466,7 +505,7 @@
       "db.type/ref"
       (cond
         (and (string? v) (some #{\/} v))
-        (keyword v)
+        (entid (keyword v))
 
         (string? v)
         (Long/parseLong v)
@@ -669,7 +708,7 @@
                           (map ->attrib fields))
           clause  `(~'or ~@(map #(vector eid %) attribs))]
       (-> dqry
-          (into-clause :where [clause])))
+          (into-clause-uniq :where [clause])))
     dqry))
 
 ;; Entries in the :fields clause can be
@@ -682,8 +721,8 @@
   (if (seq fields)
     (-> dqry
         (into-clause-uniq :find (map field-lvar) fields)
-        (into-clause :select (map field-lvar) fields)
-        (into-clause :where (mapcat field-bindings) fields))
+        (into-clause-uniq :where (mapcat field-bindings) fields)
+        (into-clause :select (map (partial field-lookup mbqry)) fields))
     dqry))
 
 ;; breakouts with aggregation = GROUP BY
@@ -709,7 +748,9 @@
           (#{:avg :sum :stddev} aggr-type)
           (into-clause-uniq :with [(table-lvar field-ref)])
           field-ref
-          (into-clause-uniq :where (field-bindings field-ref))))))
+          (into-clause-uniq :where
+                            (with-strict-bindings
+                              (field-bindings field-ref)))))))
 
 (defn apply-aggregations [dqry {:keys [aggregation] :as mbqry}]
   (reduce (partial apply-aggregation mbqry) dqry aggregation))
@@ -829,11 +870,8 @@
   (if-let [idx (index-of find ?eid)]
     (fn [row]
       (let [entity (-> row (nth idx) entity-fn)]
-        (if (= :db/id attr)
-          #_(:db/ident entity (:db/id entity))
-          (:db/id entity)
-          (unwrap-entity (attr entity)))))
-    (let [attr-sym (symbol (str ?eid "|" (namespace attr) "|" (name attr)))
+        (unwrap-entity (get entity attr))))
+    (let [attr-sym (lvar ?eid (namespace attr) (name attr))
           idx      (index-of find attr-sym)]
       (assert idx)
       (fn [row]
@@ -844,21 +882,25 @@
                 value)
             value))))))
 
-(defmethod select-field-form `datetime [dqry entity-fn [_ field unit]]
-  (let [[attr ?eid] field
-        field-lvar (symbol (str/join "|" [?eid
-                                          (namespace attr)
-                                          (name attr)
-                                          (name unit)]))]
-    (if-let [idx (index-of (:find dqry field-lvar) field-lvar)]
+(declare select-field)
+
+(defmethod select-field-form `datetime [dqry entity-fn [_ field-lvar unit]]
+  (if-let [row->field (select-field dqry entity-fn (lvar field-lvar unit))]
+    row->field
+    (let [row->field (select-field dqry entity-fn field-lvar)]
       (fn [row]
-        (nth row idx))
-      (let [select-nested-field (select-field-form dqry entity-fn field)]
-        (fn [row]
           (metabase.util.date/date-trunc-or-extract
            unit
-           (select-nested-field row)
-           (timezone-id)))))))
+           (row->field row)
+           (timezone-id))))))
+
+(defmethod select-field-form `field [dqry entity-fn [_ field {:keys [database_type]}]]
+  (let [row->field (select-field dqry entity-fn field)]
+    (fn [row]
+      (let [value (row->field row)]
+        (if (and (= "db.type/ref" database_type) (integer? value))
+          (:db/ident (entity-fn value) value)
+          value)))))
 
 (defn select-field
   "Returns a function which, given a row of data fetched from datomic, will
