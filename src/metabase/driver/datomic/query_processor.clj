@@ -301,7 +301,9 @@
   (lvar (field-lvar ref) (name unit)))
 
 (defmethod field-lvar :fk-> [[_ src dst]]
-  (lvar (str (field-lvar src) "->" (subs (str (field-lvar dst)) 1))))
+  (if (= "db/id" (:name (field-inst dst)))
+    (field-lvar src)
+    (lvar (str (field-lvar src) "->" (subs (str (field-lvar dst)) 1)))))
 
 (defmethod field-lvar :field-literal [[_ field-name]]
   (if (some #{\|} field-name)
