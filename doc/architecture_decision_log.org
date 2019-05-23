@@ -343,6 +343,85 @@ Architecture Decisions]] by Michael Nygard.
    Query generating code needs to pay attention to use the necessary helper
    functions to set up lvar bindings, so these semantics are preserved.
 
+
+* 008: Use type-specific ~nil~ placeholders
+
+  Status: ACCEPTED
+
+** Context
+
+   Datomic / Datalog does not explicitly handle ~nil~. To emulate the behavior
+   of an RDBMS where fields and relationships can be ~NULL~ we use placeholder
+   values in our queries, so that in the result set we can find these sentinels
+   and replace them with ~nil~.
+
+   So far we used ~Long/MIN_VALUE~ for refs, as they need to resemble Datomic
+   ids, and the special keyword ~::nil~ (i.e.
+   ~:metabase.driver.datomic.query-processor/nil~) elsewhere.
+
+   This turned out to be too simplistic, because when combined with aggregate
+   functions Datomic attempts to group values, which means it needs to be able
+   to compare values, and when it does that with values of disparate types,
+   things blow up.
+
+** Decision
+
+   We look at the database type of the attribute when choosing an appropriate
+   substitute value for ~nil~. This can be the keyword used before, the same
+   keyword turned into a string, ~Long/MIN_VALUE~ for numeric types and refs,
+   and a specially crafted datetime for inst fields.
+
+** Consequences
+
+   There is one big downside to this approach, if an attribute in the database
+   actually has the placeholder value as a value, it will be shown as
+   ~nil~/absent. The keyword/string versions are namespaced and so unlikely to
+   cause problems, the datetime is set at the start of the common era, so only
+   potentially problematic when dealing with ancient history (and even then it
+   needs to match to the millisecond), but number fields that contain
+   ~Long/MIN_VALUE~ may actually occur in the wild. We currently don't have a
+   solution for this.
+
+* 009: Use s-expression forms in ~:select~ to signal specific post-processing steps
+
+  Status: ACCEPTED / SUPERSEDED BY XXX
+
+** Context
+
+   In 003 we introduced an "extended datalog" format, where a ~:select~ form can
+   be added to specify how to turn the result from the ~:find~ clause into the
+   final results.
+
+   So far you could put the following things in ~:select~:
+
+   - forms that are identical to those used in ~find~, the value will be copied verbatim
+   - s-expression forms using keywords in function position, these will either
+     be converted to a symbol that is looked up in the ~:find~ clause, or if not
+     find the entity API will be used instead to look up the attribute value
+
+** Decision
+
+   Sometimes more specific post-processing is needed, in these cases we
+   communicate this from the query generation step to the execution step by
+   using s-expressions with namespaced symbols in function position. These
+   symbols are used to dispatch to the ~select-field-form~ multimethod, which
+   returns a function that extracts and tranforms a value from a result row.
+
+   So far we implement two of these special cases
+
+   - ~metabase.driver.datomic.query-processor/datetime~ which will do the
+     necessary truncation on a datetime value
+
+   - ~metabase.driver.datomic.query-processor/field~ this is used to communicate
+     field metadata, so that we can do type specific coercions or
+     transformations. This is used so far to transform ref ~:db/id~ values to
+     idents.
+
+** Consequences
+
+   This elegantly provides a future-proof mechanism for communicating extra
+   metadata to the query execution stage.
+
 * Template
 
   Status: ACCEPTED / SUPERSEDED BY XXX
