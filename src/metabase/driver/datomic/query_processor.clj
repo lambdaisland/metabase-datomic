@@ -7,7 +7,8 @@
             [metabase.models.field :as field :refer [Field]]
             [metabase.models.table :refer [Table]]
             [metabase.query-processor.store :as qp.store]
-            [toucan.db :as db])
+            [toucan.db :as db]
+            [clojure.tools.logging :as log])
   (:import java.net.URI
            java.util.UUID))
 
@@ -22,6 +23,12 @@
 
 (defn db []
   (-> (get-in (qp.store/database) [:details :db]) connect d/db))
+
+(defn user-config []
+  (try
+    (-> (get-in (qp.store/database) [:details :config] "{}") read-string)
+    (catch Exception e
+      (log/error e "Datomic EDN is not configured correctly."))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SCHEMA
@@ -365,6 +372,35 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn path-bindings [from-sym to-sym path]
+  (let [segment-binding
+        (fn [from to seg]
+          (cond
+            (keyword? seg)
+            (if (= \_ (first (name seg)))
+              (bind-attr to (keyword (namespace seg) (subs (name seg) 1)) from)
+              (bind-attr from seg to))
+
+            (symbol? seg)
+            (if (= \_ (first (name seg)))
+              (list (symbol (subs (str seg) 1)) to from)
+              (list seg from to))))]
+    (loop [[p & path] path
+           binding    []
+           from-sym   from-sym]
+      (if (seq path)
+        (let [next-from (gensym "?")]
+          (recur path
+                 (conj binding (segment-binding from-sym next-from p))
+                 next-from))
+        (conj binding (segment-binding from-sym to-sym p))))))
+
+(defn custom-relationship? [field-ref]
+  (-> field-ref
+      field-inst
+      :database_type
+      (= "metabase.driver.datomic/path")))
+
 ;;=> [:field-id 45] ;;=> [[?artist :artist/name ?artist|artist|name]]
 (defmulti field-bindings
   "Given a field reference, return the necessary Datalog bindings (as used
@@ -376,9 +412,17 @@
   mbql.u/dispatch-by-clause-name-or-class)
 
 (defmethod field-bindings :field-id [field-ref]
-  (let [attr (->attrib field-ref)]
-    (when-not (= :db/id attr)
-      [(bind-attr (table-lvar field-ref) attr (field-lvar field-ref))])))
+  (if (custom-relationship? field-ref)
+    (let [src-field (field-inst field-ref)
+          src-name  (keyword (:name (qp.store/table (:table_id src-field))))
+          rel-name  (keyword (:name src-field))
+          {:keys [path target]} (get-in (user-config) [:relationships src-name rel-name])]
+      (path-bindings (table-lvar field-ref)
+                     (field-lvar field-ref)
+                     path))
+    (let [attr (->attrib field-ref)]
+      (when-not (= :db/id attr)
+        [(bind-attr (table-lvar field-ref) attr (field-lvar field-ref))]))))
 
 (defmethod field-bindings :field-literal [[_ literal :as field-ref]]
   ;; This is dodgy af, and we really have no business binding attributes to
@@ -396,10 +440,18 @@
     []))
 
 (defmethod field-bindings :fk-> [[_ src dst :as field]]
-  (if (= :db/id (->attrib field))
-    [[(table-lvar src) (->attrib src) (table-lvar field)]]
-    [(bind-attr (table-lvar src) (->attrib src) (field-lvar src))
-     (bind-attr (field-lvar src) (->attrib field) (field-lvar field))]))
+  (if (custom-relationship? src)
+    (let [src-field (field-inst src)
+          src-name  (keyword (:name (qp.store/table (:table_id src-field))))
+          rel-name  (keyword (:name src-field))
+          {:keys [path target]} (get-in (user-config) [:relationships src-name rel-name])]
+      (path-bindings (table-lvar src)
+                     (field-lvar field)
+                     (conj path (->attrib dst))))
+    (if (= :db/id (->attrib field))
+      [[(table-lvar src) (->attrib src) (table-lvar field)]]
+      [(bind-attr (table-lvar src) (->attrib src) (field-lvar src))
+       (bind-attr (field-lvar src) (->attrib field) (field-lvar field))])))
 
 (defmethod field-bindings :aggregation [_]
   [])
@@ -704,8 +756,10 @@
     (let [table   (qp.store/table source-table)
           eid     (table-lvar table)
           fields  (db/select Field :table_id source-table)
-          attribs (remove (comp reserved-prefixes namespace)
-                          (map ->attrib fields))
+          attribs (->> fields
+                       (remove (comp #{"metabase.driver.datomic/path"} :database_type))
+                       (map ->attrib)
+                       (remove (comp reserved-prefixes namespace)))
           clause  `(~'or ~@(map #(vector eid %) attribs))]
       (-> dqry
           (into-clause-uniq :where [clause])))
@@ -798,7 +852,7 @@
                            find))))))
 
 (defn mbqry->dqry [mbqry]
-  (-> {}
+  (-> '{:in [$ %]}
       (apply-source-query mbqry)
       (apply-source-table mbqry)
       (apply-fields mbqry)
@@ -1064,7 +1118,7 @@
 (defn execute-query [{:keys [native query] :as native-query}]
   (let [db      (db)
         dqry    (read-query (:query native))
-        results (d/q (dissoc dqry :fields) db)
+        results (d/q (dissoc dqry :fields) db (:rules (user-config)))
         ;; Hacking around this is as it's so common in Metabase's automatic
         ;; dashboards. Datomic never returns a count of zero, instead it just
         ;; returns an empty result.

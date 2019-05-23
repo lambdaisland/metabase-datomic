@@ -11,6 +11,10 @@ driver:
       display-name: URL
       placeholder: datomic:mem://metabase_dev
       required: true
+    - name: config
+      display-name: Configuration EDN
+      placeholder: "{}"
+      required: true
 init:
   - step: load-namespace
     namespace: metabase.driver.datomic

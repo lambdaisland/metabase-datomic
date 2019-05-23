@@ -1,6 +1,13 @@
 (ns navigation
   (:require [datomic.api :as d]))
 
+{:relationships {:journal-entry
+                 {:account
+                  {:path [:journal-entry/journal-entry-lines :journal-entry-line/account]
+                   :target :account}}}}
+
+
+
 {:rules
  [[(sub-accounts ?p ?c)
    [?p :account/children ?c]]

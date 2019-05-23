@@ -3,7 +3,8 @@
             [metabase.driver :as driver]
             [metabase.driver.datomic.query-processor :as datomic.qp]
             [metabase.driver.datomic.util :as util]
-            [toucan.db :as db]))
+            [toucan.db :as db]
+            [clojure.tools.logging :as log]))
 
 (require 'metabase.driver.datomic.monkey-patch)
 
@@ -40,6 +41,12 @@
         {:name   table-name
          :schema nil}))}))
 
+(defn user-config [database]
+  (try
+    (read-string (get-in database [:details :config] "{}"))
+    (catch Exception e
+      (log/error e "Datomic EDN is not configured correctly."))))
+
 (derive :type/Keyword :type/Text)
 
 (def datomic->metabase-type
@@ -65,23 +72,30 @@
     (util/kw->str col)))
 
 (defn describe-table [database {table-name :name}]
-  (let [url  (get-in database [:details :db])
-        db   (d/db (d/connect url))
-        cols (datomic.qp/table-columns db table-name)]
+  (let [url    (get-in database [:details :db])
+        config (user-config database)
+        db     (d/db (d/connect url))
+        cols   (datomic.qp/table-columns db table-name)
+        rels   (get-in config [:relationships (keyword table-name)])]
     {:name   table-name
      :schema nil
 
      ;; Fields *must* be a set
      :fields
-     (into #{{:name          "db/id"
-              :database-type "db.type/ref"
-              :base-type     :type/PK
-              :pk?           true}}
-           (for [[col type] cols]
-             {:name          (column-name table-name col)
-              :database-type (util/kw->str type)
-              :base-type     (datomic->metabase-type type)
-              :special-type  (datomic->metabase-type type)}))}))
+     (-> #{{:name          "db/id"
+            :database-type "db.type/ref"
+            :base-type     :type/PK
+            :pk?           true}}
+         (into (for [[col type] cols]
+                 {:name          (column-name table-name col)
+                  :database-type (util/kw->str type)
+                  :base-type     (datomic->metabase-type type)
+                  :special-type  (datomic->metabase-type type)}))
+         (into (for [[rel-name {:keys [path target]}] rels]
+                 {:name          (name rel-name)
+                  :database-type "metabase.driver.datomic/path"
+                  :base-type     :type/FK
+                  :special-type  :type/FK})))}))
 
 (defmethod driver/describe-table :datomic [_ database table]
   (describe-table database table))
@@ -105,17 +119,25 @@
 (defn describe-table-fks [database {table-name :name}]
   (let [url    (get-in database [:details :db])
         db     (d/db (d/connect url))
+        config (user-config database)
         tables (datomic.qp/derive-table-names db)
-        cols   (datomic.qp/table-columns db table-name)]
-    (into #{}
-          (for [[col type] cols
-                :when      (= type :db.type/ref)
-                :let       [dest (guess-dest-column db tables col)]
-                :when      dest]
-            {:fk-column-name   (column-name table-name col)
-             :dest-table       {:name   dest
-                                :schema nil}
-             :dest-column-name "db/id"}))))
+        cols   (datomic.qp/table-columns db table-name)
+        rels   (get-in config [:relationships (keyword table-name)])]
+
+    (-> #{}
+        (into (for [[col type] cols
+                    :when      (= type :db.type/ref)
+                    :let       [dest (guess-dest-column db tables col)]
+                    :when      dest]
+                {:fk-column-name   (column-name table-name col)
+                 :dest-table       {:name   dest
+                                    :schema nil}
+                 :dest-column-name "db/id"}))
+        (into (for [[rel-name {:keys [path target]}] rels]
+                {:fk-column-name (name rel-name)
+                 :dest-table {:name (name target)
+                              :schema nil}
+                 :dest-column-name "db/id"})))))
 
 (defmethod driver/describe-table-fks :datomic [_ database table]
   (describe-table-fks database table))

@@ -574,3 +574,99 @@ Long/MIN_VALUE
    }
  (db eeleven-url)
  )
+
+(d/q
+ '{:where
+   [(or
+     [?journal-entry :journal-entry/base-rate]
+     [?journal-entry :journal-entry/currency]
+     [?journal-entry :journal-entry/date]
+     [?journal-entry :journal-entry/document-date]
+     [?journal-entry :journal-entry/document-number]
+     [?journal-entry :journal-entry/document-reference]
+     [?journal-entry :journal-entry/document-sequence]
+     [?journal-entry :journal-entry/document-type]
+     [?journal-entry :journal-entry/external-id]
+     [?journal-entry :journal-entry/id]
+     [?journal-entry :journal-entry/journal-entry-lines]
+     [?journal-entry :journal-entry/magic-document]
+     [?journal-entry :journal-entry/narration]
+     [?journal-entry :journal-entry/number]
+     [?journal-entry :journal-entry/reverse-of]
+     [?journal-entry :journal-entry/reversed-by]
+     [?journal-entry :journal-entry/state])
+    (or-join
+     [?journal-entry ?96910]
+     [?journal-entry :journal-entry/journal-entry-lines ?96910]
+     (and [(missing? $ ?journal-entry :journal-entry/journal-entry-lines)] [(ground -9223372036854775808) ?96910]))
+    [(get-else $ ?96910 :journal-entry-line/account -9223372036854775808) ?journal-entry|journal-entry|account]
+    [(get-else $ ?journal-entry :journal-entry/base-rate -9223372036854775808) ?journal-entry|journal-entry|base-rate]
+    [(get-else $ ?journal-entry :journal-entry/currency -9223372036854775808) ?journal-entry|journal-entry|currency]
+    [(get-else $ ?journal-entry :journal-entry/date #inst "0001-01-01T01:01:01.000-00:00") ?journal-entry|journal-entry|date]
+    [(metabase.driver.datomic.query-processor/date-trunc-or-extract-some :default ?journal-entry|journal-entry|date) ?journal-entry|journal-entry|date|default]
+    [(get-else $ ?journal-entry :journal-entry/document-date #inst "0001-01-01T01:01:01.000-00:00") ?journal-entry|journal-entry|document-date]
+    [(metabase.driver.datomic.query-processor/date-trunc-or-extract-some :default ?journal-entry|journal-entry|document-date) ?journal-entry|journal-entry|document-date|default]
+    [(get-else $ ?journal-entry :journal-entry/document-number ":metabase.driver.datomic.query-processor/nil") ?journal-entry|journal-entry|document-number]
+    [(get-else $ ?journal-entry :journal-entry/document-reference ":metabase.driver.datomic.query-processor/nil") ?journal-entry|journal-entry|document-reference]
+    [(get-else $ ?journal-entry :journal-entry/document-sequence -9223372036854775808) ?journal-entry|journal-entry|document-sequence]
+    [(get-else $ ?journal-entry :journal-entry/document-type -9223372036854775808) ?journal-entry|journal-entry|document-type]
+    [(get-else $ ?journal-entry :journal-entry/external-id ":metabase.driver.datomic.query-processor/nil") ?journal-entry|journal-entry|external-id]
+    [(get-else $ ?journal-entry :journal-entry/id ":metabase.driver.datomic.query-processor/nil") ?journal-entry|journal-entry|id]
+    (or-join
+     [?journal-entry ?journal-entry|journal-entry|journal-entry-lines]
+     [?journal-entry :journal-entry/journal-entry-lines ?journal-entry|journal-entry|journal-entry-lines]
+     (and [(missing? $ ?journal-entry :journal-entry/journal-entry-lines)] [(ground -9223372036854775808) ?journal-entry|journal-entry|journal-entry-lines]))
+    [(get-else $ ?journal-entry :journal-entry/magic-document -9223372036854775808) ?journal-entry|journal-entry|magic-document]
+    [(get-else $ ?journal-entry :journal-entry/narration ":metabase.driver.datomic.query-processor/nil") ?journal-entry|journal-entry|narration]
+    [(get-else $ ?journal-entry :journal-entry/number ":metabase.driver.datomic.query-processor/nil") ?journal-entry|journal-entry|number]
+    [(get-else $ ?journal-entry :journal-entry/reverse-of -9223372036854775808) ?journal-entry|journal-entry|reverse-of]
+    [(get-else $ ?journal-entry :journal-entry/reversed-by -9223372036854775808) ?journal-entry|journal-entry|reversed-by]
+    [(get-else $ ?journal-entry :journal-entry/state -9223372036854775808) ?journal-entry|journal-entry|state]
+    [(get-else $ ?journal-entry|journal-entry|journal-entry-lines :journal-entry-line/id ":metabase.driver.datomic.query-processor/nil")
+     ?journal-entry|journal-entry|journal-entry-lines->journal-entry-line|journal-entry-line|id]],
+   :find
+   [?journal-entry
+    ?journal-entry|journal-entry|account
+    ?journal-entry|journal-entry|base-rate
+    ?journal-entry|journal-entry|currency
+    ?journal-entry|journal-entry|date|default
+    ?journal-entry|journal-entry|document-date|default
+    ?journal-entry|journal-entry|document-number
+    ?journal-entry|journal-entry|document-reference
+    ?journal-entry|journal-entry|document-sequence
+    ?journal-entry|journal-entry|document-type
+    ?journal-entry|journal-entry|external-id
+    ?journal-entry|journal-entry|id
+    ?journal-entry|journal-entry|journal-entry-lines
+    ?journal-entry|journal-entry|magic-document
+    ?journal-entry|journal-entry|narration
+    ?journal-entry|journal-entry|number
+    ?journal-entry|journal-entry|reverse-of
+    ?journal-entry|journal-entry|reversed-by
+    ?journal-entry|journal-entry|state
+    ?journal-entry|journal-entry|journal-entry-lines->journal-entry-line|journal-entry-line|id],
+   :select
+   [(metabase.driver.datomic.query-processor/field ?journal-entry {:database_type "db.type/ref", :base_type :type/PK, :special_type :type/PK})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|account {:database_type "metabase.driver.datomic/path", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|base-rate {:database_type "db.type/bigdec", :base_type :type/Decimal, :special_type :type/Decimal})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|currency {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/datetime ?journal-entry|journal-entry|date :default)
+    (metabase.driver.datomic.query-processor/datetime ?journal-entry|journal-entry|document-date :default)
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|document-number {:database_type "db.type/string", :base_type :type/Text, :special_type :type/Text})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|document-reference {:database_type "db.type/string", :base_type :type/Text, :special_type :type/Text})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|document-sequence {:database_type "db.type/long", :base_type :type/Integer, :special_type :type/Integer})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|document-type {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|external-id {:database_type "db.type/string", :base_type :type/Text, :special_type :type/Text})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|id {:database_type "db.type/string", :base_type :type/Text, :special_type :type/Text})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|journal-entry-lines {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|magic-document {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|narration {:database_type "db.type/string", :base_type :type/Text, :special_type :type/Text})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|number {:database_type "db.type/string", :base_type :type/Text, :special_type :type/Text})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|reverse-of {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|reversed-by {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|state {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field
+     ?journal-entry|journal-entry|journal-entry-lines->journal-entry-line|journal-entry-line|id
+     {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})],
+   :with ()}
+ (db eeleven-url))

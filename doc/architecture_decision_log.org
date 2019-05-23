@@ -422,6 +422,44 @@ Architecture Decisions]] by Michael Nygard.
    This elegantly provides a future-proof mechanism for communicating extra
    metadata to the query execution stage.
 
+* 010: Support custom relationships
+
+  Status: ACCEPTED
+
+** Context
+
+   While Metabase's foreign key functionality is very handy, it is at the same
+   time quite limited. You can only navigate one "hop" away from your source
+   table, and can only navigate in the direction the relationship is declared.
+
+   Datomic being (among other things) a graph database makes it very easy to
+   traverse chains of relationships, but we are stuck with the Metabase UI. Can
+   we "hack" the UI to support more general relationship traversal.
+
+** Decision
+
+   Allow configuring "custom" relationships. These have a source "table", a
+   destination "table", a "path", and a "name". The UI will display these as
+   regular foreign keys, allowing you to navigate from one table to the next,
+   but in reality they are backed by an arbitrary path lookup, including reverse
+   lookups and Datomic rules.
+
+   To configure these you paste a snippet of EDN configuration into the admin
+   UI.
+
+   When syncing the schema we use this information to create synthetic foreign
+   keys, which we give the special database type "metabase.driver.datomic/path"
+   to distinguish them from "real" foreign keys.
+
+   During query generation ~:field-id~ of ~:fk->~ clauses need to be checked
+   first, and potentially handled by a separate logic which generates the
+   necessary Datalog ~:where~ binding based on the path.
+
+** Consequences
+
+   This adds some special cases that need to be considered, but it also adds a
+   tremendous amount of flexibility of use.
+
 * Template
 
   Status: ACCEPTED / SUPERSEDED BY XXX
