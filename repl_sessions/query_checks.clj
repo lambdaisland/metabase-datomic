@@ -670,3 +670,40 @@ Long/MIN_VALUE
      {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})],
    :with ()}
  (db eeleven-url))
+
+
+(d/q
+ '{
+   :find
+   [?ledger ?ledger|ledger|id ?ledger|ledger|journal-entries ?ledger|ledger|name ?ledger|ledger|tax-entries ?ledger|ledger|journal-entries->journal-entry|journal-entry|id],
+
+   :where
+   [(or [?ledger :ledger/id]
+        [?ledger :ledger/journal-entries]
+        [?ledger :ledger/name]
+        [?ledger :ledger/tax-entries])
+
+    [(get-else $ ?ledger :ledger/id ":metabase.driver.datomic.query-processor/nil") ?ledger|ledger|id]
+
+    (or-join [?ledger ?ledger|ledger|journal-entries]
+             [?ledger :ledger/journal-entries ?ledger|ledger|journal-entries]
+             (and [(missing? $ ?ledger :ledger/journal-entries)]
+                  [(ground -9223372036854775808) ?ledger|ledger|journal-entries]))
+
+    [(get-else $ ?ledger :ledger/name ":metabase.driver.datomic.query-processor/nil") ?ledger|ledger|name]
+
+    (or-join [?ledger ?ledger|ledger|tax-entries]
+             [?ledger :ledger/tax-entries ?ledger|ledger|tax-entries]
+             (and [(missing? $ ?ledger :ledger/tax-entries)]
+                  [(ground -9223372036854775808) ?ledger|ledger|tax-entries]))
+
+    (or-join [?ledger ?journal-entry]
+             [?ledger :ledger/journal-entries ?journal-entry]
+             (and [(missing? $ ?ledger :ledger/journal-entries)]
+                  [(ground -9223372036854775808) ?journal-entry]))
+
+    [(get-else $ ?journal-entry :journal-entry/id ":metabase.driver.datomic.query-processor/nil") ?ledger|ledger|journal-entries->journal-entry|journal-entry|id]
+
+    [(ground "JE-2879-00-0055") ?ledger|ledger|journal-entries->journal-entry|journal-entry|id]],
+   }
+ (db eeleven-url))

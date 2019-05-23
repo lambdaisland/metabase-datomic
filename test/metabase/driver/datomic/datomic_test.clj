@@ -1,4 +1,5 @@
 (ns metabase.driver.datomic.datomic-test
+  "Checks for things that are particular to datomic, and regression tests."
   (:require [clojure.test :refer :all]
             [metabase.driver.datomic.test :refer :all]
             [metabase.driver.datomic.test-data :as test-data]
@@ -12,19 +13,22 @@
             [datomic.api :as d]
             [metabase.sync :as sync]))
 
+;; Skip these tests if the eeleven sample DB does not exist.
+(try
+  (d/connect "datomic:free://localhost:4334/eeleven")
+  (catch Exception e
+    (alter-meta! *ns* assoc :kaocha/skip true)))
+
 (defn get-or-create-eeleven-db! []
   (if-let [db-inst (db/select-one Database :name "Eeleven")]
     db-inst
-    (do
-      ;; explode if the Datomic DB does not exist
-      (d/connect "datomic:free://localhost:4334/eeleven")
-      (let [db (db/insert! Database
-                 :name    "Eeleven"
-                 :engine  :datomic
-                 :details {:db "datomic:free://localhost:4334/eeleven"})]
-        (sync/sync-database! db)
-        (fix-types/undo-invalid-primary-keys!)
-        (Database (:id db))))))
+    (let [db (db/insert! Database
+               :name    "Eeleven"
+               :engine  :datomic
+               :details {:db "datomic:free://localhost:4334/eeleven"})]
+      (sync/sync-database! db)
+      (fix-types/undo-invalid-primary-keys!)
+      (Database (:id db)))))
 
 (defmacro with-datomic-db [& body]
   `(with-datomic
@@ -40,7 +44,6 @@
               :data
               :rows
               (map first)))))
-
 
 ;; check that idents are returned as such, and can be filtered
 (deftest ident-test
@@ -81,3 +84,13 @@
                                             $journal-entry-lines
                                             [:field-id (data/id "journal-entry-line" "amount")]]]]
                    :order-by [[:asc [:datetime-field $date :week]]]})))))
+
+(deftest filter-on-foreign-key
+  ;; specifically this checks that filtering on a foreign key works correctly
+  ;; even if the foreign field is not returned in the result. In other words: it
+  ;; checks that constant-binding works correctly for foreign fields.
+  (is (match? {:data {:columns ["db/id" "id" "journal-entries" "name" "tax-entries"],
+                      :rows [[17592186045737 "LGR-5487-92-0122" 17592186045912 "SG-01-GL-01" nil]]}},
+              (with-datomic-db
+                (data/run-mbql-query ledger
+                  {:filter [:= [:fk-> $journal-entries (data/id "journal-entry" "id")] "JE-2879-00-0055"]})))))

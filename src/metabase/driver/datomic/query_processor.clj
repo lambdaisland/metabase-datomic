@@ -498,7 +498,7 @@
   (let [src-attr (->attrib src)
         dst-attr (->attrib dst)
         ?src (table-lvar src)
-        ?dst (table-lvar dst)
+        ?dst (field-lvar src)
         ?val (field-lvar field-ref)]
     (if (= :db/id dst-attr)
       (if (keyword? value)
