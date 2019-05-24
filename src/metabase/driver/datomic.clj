@@ -50,7 +50,7 @@
 (derive :type/Keyword :type/Text)
 
 (def datomic->metabase-type
-  {:db.type/keyword :type/Keyword ;; Value type for keywords.
+  {:db.type/keyword :type/Keyword    ;; Value type for keywords.
    :db.type/string  :type/Text       ;; Value type for strings.
    :db.type/boolean :type/Boolean    ;; Boolean value type.
    :db.type/long    :type/Integer    ;; Fixed integer value type. Same semantics as a Java long: 64 bits wide, two's complement binary representation.

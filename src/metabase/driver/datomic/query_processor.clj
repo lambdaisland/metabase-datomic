@@ -17,6 +17,8 @@
 ;; dqry  : Datalog query
 ;; mbqry : Metabase (MBQL) query
 ;; db    : Datomic DB instance
+;; attr  : A datomic attribute, i.e. a qualified keyword
+;; ?foo / lvar : A logic variable, i.e. a symbol starting with a question mark
 
 (def connect #_(memoize d/connect)
   d/connect)
@@ -110,9 +112,9 @@
   [attr]
   (= :db.cardinality/many (:db/cardinality (d/entity *db* attr))))
 
-(defn attr-type [ident]
+(defn attr-type [attr]
   (get-in
-   (d/pull *db* [{:db/valueType [:db/ident]}] ident)
+   (d/pull *db* [{:db/valueType [:db/ident]}] attr)
    [:db/valueType :db/ident]))
 
 (defn entid [ident]
@@ -351,8 +353,8 @@
 
 (defn bind-attr
   "Datalog EAV binding that unifies to NIL if the attribute is not present, the
-  equivalent of a left join, so we can look up attributes without filtering the
-  result at the same time.
+  equivalent of an outer join, so we can look up attributes without filtering
+  the result at the same time.
 
   Will do a simple [e a v] binding when *strict-bindings* is true."
   [?e a ?v]
@@ -374,30 +376,37 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn path-bindings [from-sym to-sym path]
+(defn path-bindings
+  "Given a start and end point (two lvars) and a path, a sequence of Datomic
+  attributes (kw) and rule names (sym), generates a sequence of :where binding
+  forms to navigate from start to symbol via the given path."
+  [?from ?to path]
   (let [segment-binding
-        (fn [from to seg]
+        (fn [?from ?to seg]
           (cond
             (keyword? seg)
             (if (= \_ (first (name seg)))
-              (bind-attr to (keyword (namespace seg) (subs (name seg) 1)) from)
-              (bind-attr from seg to))
+              (bind-attr ?to (keyword (namespace seg) (subs (name seg) 1)) ?from)
+              (bind-attr ?from seg ?to))
 
             (symbol? seg)
             (if (= \_ (first (name seg)))
-              (list (symbol (subs (str seg) 1)) to from)
-              (list seg from to))))]
+              (list (symbol (subs (str seg) 1)) ?to ?from)
+              (list seg ?from ?to))))]
     (loop [[p & path] path
            binding    []
-           from-sym   from-sym]
+           ?from      ?from]
       (if (seq path)
-        (let [next-from (gensym "?")]
+        (let [?next-from (gensym "?")]
           (recur path
-                 (conj binding (segment-binding from-sym next-from p))
-                 next-from))
-        (conj binding (segment-binding from-sym to-sym p))))))
+                 (conj binding (segment-binding ?from ?next-from p))
+                 ?next-from))
+        (conj binding (segment-binding ?from ?to p))))))
 
-(defn custom-relationship? [field-ref]
+(defn custom-relationship?
+  "Is tis field reference a custom relationship, i.e. configured via the admin UI
+  and backed by a custom path traversal."
+  [field-ref]
   (-> field-ref
       field-inst
       :database_type
@@ -427,18 +436,17 @@
         [(bind-attr (table-lvar field-ref) attr (field-lvar field-ref))]))))
 
 (defmethod field-bindings :field-literal [[_ literal :as field-ref]]
-  ;; This is dodgy af, and we really have no business binding attributes to
-  ;; lvars based on what we think the user might need, but seems you are
-  ;; supposed to be able to do this, notably with native queries, so if we have
-  ;; a source table, and the field name seems to correspond with an actual
-  ;; attribute with that prefix, then we'll go for it. If not this retuns an
-  ;; empty seq i.e. doesn't bind anything, and you will likely end up with
-  ;; Datomic complaining about insufficient bindings.
+  ;; This is dodgy, as field literals contain no source or schema information,
+  ;; but this is used in native queries, so if we have a source table, and the
+  ;; field name seems to correspond with an actual attribute with that prefix,
+  ;; then we'll go for it. If not this retuns an empty seq i.e. doesn't bind
+  ;; anything, and you will likely end up with Datomic complaining about
+  ;; insufficient bindings.
   (if-let [table (source-table)]
     (let [attr (keyword (:name (qp.store/table table)) literal)]
       (if (attr-type attr)
         [(bind-attr (table-lvar table) attr (field-lvar field-ref))]
-        [attr]))
+        []))
     []))
 
 (defmethod field-bindings :fk-> [[_ src dst :as field]]
@@ -657,7 +665,6 @@
                   (cons 'and c)))
               clauses))]))
 
-
 (defmethod filter-clauses :or [[_ & clauses]]
   (or-join (map filter-clauses clauses)))
 
@@ -698,7 +705,6 @@
                                ~(value-literal value)
                                ~(merge {:case-sensitive true} opts))]))
 
-
 (defmethod filter-clauses :contains [[_ field value opts]]
   (conj (field-bindings field)
         [`(util/str-contains? ~(field-lvar field)
@@ -734,7 +740,11 @@
 (declare read-query)
 (declare mbqry->dqry)
 
-(defn apply-source-query [dqry {:keys [source-query fields breakout] :as mbqry}]
+(defn apply-source-query
+  "Nested query support. We don't actually 'nest' queries as Datalog doesn't have
+  that, instead we merge queries, but keeping only the :find and :select parts
+  of the outer query."
+  [dqry {:keys [source-query fields breakout] :as mbqry}]
   (if source-query
     (cond-> (if-let [native (:native source-query)]
               (read-query native)
@@ -791,10 +801,7 @@
         (into-clause :select (map (partial field-lookup mbqry)) breakout))
     dqry))
 
-(defmulti apply-aggregation (fn [mbqry dqry aggregation]
-                              (first aggregation)))
-
-(defmethod apply-aggregation :default [mbqry dqry aggregation]
+(defn apply-aggregation [mbqry dqry aggregation]
   (let [clause                (aggregation-clause mbqry aggregation)
         [aggr-type field-ref] aggregation]
     (-> dqry
