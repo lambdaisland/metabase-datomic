@@ -70,12 +70,16 @@ user=> (setup!)
 
 ## Installing
 
-The general process is to build an uberjar, and copy the result into your
-Metabase `plugins/` directory. You can build a jar based on datomic-free, or
-datomic-pro (assuming you have a license).
+The general process is to build an uberjar, and copy the result into
+your Metabase `plugins/` directory. You can build a jar based on
+datomic-free, or datomic-pro (assuming you have a license). Metabase
+must be available as a local JAR.
 
 ``` shell
-cd metabase-datomic
+cd metabase
+lein install
+mkdir plugins
+cd ../metabase-datomic
 lein with-profiles +datomic-free uberjar
 # lein with-profiles +datomic-pro uberjar
 cp target/uberjar/datomic.metabase-driver.jar ../metabase/plugins
