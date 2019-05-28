@@ -78,6 +78,7 @@ must be available as a local JAR.
 ``` shell
 cd metabase
 lein install
+mkdir plugins
 cd ../metabase-datomic
 lein with-profiles +datomic-free uberjar
 # lein with-profiles +datomic-pro uberjar
