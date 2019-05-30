@@ -15,7 +15,7 @@
       ((jit metabase.plugins.initialize/init-plugin-with-info!))))
 
 (defn setup-db! []
-  ((jit metabase.db/setup-db!) :auto-migrate true))
+  ((jit metabase.db/setup-db!)))
 
 (defn open-metabase []
   ((jit clojure.java.browse/browse-url) "http://localhost:3000"))

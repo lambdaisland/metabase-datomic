@@ -36,6 +36,12 @@ cd metabase
 yarn build
 ```
 
+And install metabase locally
+
+``` shell
+lein install
+```
+
 Now `cd` into the `metabase-datomic` directory, and run `bin/start_metabase` to
 lauch the process including nREPL running on port 4444.
 
