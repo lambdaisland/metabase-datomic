@@ -313,7 +313,7 @@
   (is (match? {:data {:rows [["DE" nil]
                              ["FI" nil]]}}
               (with-datomic
-                (data/with-temp-db [_ test-data/with-nulls]
+                (data/with-db-for-dataset [_ test-data/with-nulls]
                   (data/run-mbql-query country
                     {:fields [$code $population]
                      :filter [:is-null $population]
@@ -321,7 +321,7 @@
 
   (is (match? {:data {:rows [["BE" 11000000]]}}
               (with-datomic
-                (data/with-temp-db [_ test-data/with-nulls]
+                (data/with-db-for-dataset [_ test-data/with-nulls]
                   (data/run-mbql-query country
                     {:fields [$code $population]
                      :filter [:not [:is-null $population]]}))))))
