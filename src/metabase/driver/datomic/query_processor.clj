@@ -335,6 +335,7 @@
 (def NIL_VALUES
   {:db.type/string  (str ::nil)
    :db.type/keyword ::nil
+   :db.type/boolean false
    :db.type/bigdec  Long/MIN_VALUE
    :db.type/bigint  Long/MIN_VALUE
    :db.type/double  Long/MIN_VALUE
@@ -1035,7 +1036,11 @@
     val))
 
 (defn resolve-fields [db result {:keys [select order-by] :as dqry}]
-  (let [nil-placeholder? (set (vals NIL_VALUES))
+  (let [nil-placeholder? (-> NIL_VALUES vals set
+                             ;; false is used as a stand-in for nil in boolean
+                             ;; fields, but we don't want to replace false with
+                             ;; nil in results.
+                             (disj false))
         entity-fn (memoize (fn [eid] (d/entity db eid)))]
     (->> result
          ;; TODO: This needs to be retought, we can only really order after

@@ -460,6 +460,35 @@ Architecture Decisions]] by Michael Nygard.
    This adds some special cases that need to be considered, but it also adds a
    tremendous amount of flexibility of use.
 
+* 011: Use false as the nil-placeholder for boolean columns
+** Context
+   We try to generate queries in such a way that when an attribute is missing on
+   an entity that instead we returns placeholder value, which is then in
+   post-processing replaced with actual ~nil~. This way we don't remove entities
+   from a result set just because the entity doesn't have all the attributes we
+   expected.
+
+   We use a type-specific placeholder because Datomic internally compares result
+   values to group results, and this fails if values returned for the same logic
+   variable have types that can't be compared (e.g. keyword and boolean).
+
+   The most common placeholders are
+   ~:metabase.driver.datomic.query-processor/nil~, and ~Long/MIN_VALUE~.
+
+** Decision
+   For boolean columns we use ~false~ as the placeholder, so that we maintain
+   the correct filtering semantics, and so that queries don't blow up because of
+   type differences.
+
+** Consequences
+   This is different from the other cases, because it is no longer possible to
+   discern which entities have an actual value of ~false~, and which ones are
+   missing/~nil~. So in this case we leave the filled-in placeholders in the
+   result, rather than replacing them with ~nil~.
+
+   In other words: entities where a boolean attribute is missing will be shown
+   as having ~false~ for that attribute.
+
 * Template
 
   Status: ACCEPTED / SUPERSEDED BY XXX
