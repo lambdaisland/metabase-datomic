@@ -11,7 +11,10 @@
    {:dependencies [[metabase-core "1.0.0-SNAPSHOT"]]}
 
    :datomic-free {:lein-tools-deps/config {:aliases [:datomic-free]}}
-   :datomic-pro {:lein-tools-deps/config {:aliases [:datomic-pro]}}
+   :datomic-pro
+   {:lein-tools-deps/config {:aliases [:datomic-pro]}
+    :repositories
+    {"my.datomic.com" {:url "https://my.datomic.com/repo"}}}
 
    :uberjar
    {:auto-clean    true
