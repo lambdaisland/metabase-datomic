@@ -2,6 +2,7 @@
   (:require [datomic.api :as d]
             [clojure.set :as set]))
 
+(user/refer-repl)
 
 
 (d/q
@@ -534,7 +535,6 @@ Long/MIN_VALUE
 
 (d/entity (db eeleven-url) :document-type/general)
 #:db{:id }
-(user/refer-repl)
 
 
 (d/q
@@ -707,3 +707,53 @@ Long/MIN_VALUE
     [(ground "JE-2879-00-0055") ?ledger|ledger|journal-entries->journal-entry|journal-entry|id]],
    }
  (db eeleven-url))
+
+
+(d/q
+ '{:in [$ %],
+   :where
+   [(or
+     [?account :account/bank-account-name]
+     [?account :account/bank-account-number]
+     [?account :account/category]
+     [?account :account/children]
+     [?account :account/closed?]
+     [?account :account/contact-cards]
+     [?account :account/currency]
+     [?account :account/description]
+     [?account :account/expense-category]
+     [?account :account/id]
+     [?account :account/name]
+     [?account :account/number]
+     [?account :account/subtype]
+     [?account :account/type])
+    [(get-else $ ?account :account/currency -9223372036854775808) ?account|account|currency]
+    [(get-else $ ?account|account|currency
+               :currency/enabled?
+               :metabase.driver.datomic.query-processor/nil)
+     ?account|account|currency->currency|currency|enabled?]],
+   :find [(count ?account)
+          ?account|account|currency->currency|currency|enabled?],
+   :order-by
+   [[:desc (count ?account)]
+    [:asc (metabase.driver.datomic.query-processor/field ?account|account|currency->currency|currency|enabled? {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})]],
+   :select
+   [(metabase.driver.datomic.query-processor/field ?account|account|currency->currency|currency|enabled? {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK}) (count ?account)],
+   }
+ (db eeleven-url))
+
+(supers (class (:tail (d/log (conn eeleven-url)))))
+
+(let [log (:tail (d/log (conn eeleven-url)))]
+  (into {} (map (juxt identity #(class (% log)))) (keys log)))
+
+(:txes (:tail (d/log (conn eeleven-url))))
+
+(inc 1)
+
+(map (comp d/touch (partial d/entity (db eeleven-url)) d/t->tx  :t) (d/tx-range (d/log (conn eeleven-url)) nil nil))
+{:db/id 13194139535416, :db/txInstant #inst "2019-04-17T11:46:55.577-00:00", :conformity/conformed-norms :elvn.db-migration/init-sample, :conformity/conformed-norms-index 1, :tx/tenant #:db{:id 17592186046521}}
+
+(user/refer-repl)
+
+(count (seq (d/seek-datoms (db eeleven-url) :eavt 13194139535416)))
