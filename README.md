@@ -8,6 +8,12 @@ A Metabase driver for Datomic.
 
 Commercial support is provided by [Gaiwan](http://gaiwan.co).
 
+## Try it!
+
+```
+docker run -p 3000:3000 lambdaisland/metabase-datomic
+```
+
 ## Design decisions
 
 See the [Architecture Decision Log](doc/architecture_decision_log.org)
