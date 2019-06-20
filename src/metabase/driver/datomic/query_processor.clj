@@ -23,14 +23,21 @@
 (def connect #_(memoize d/connect)
   d/connect)
 
-(defn db []
-  (-> (get-in (qp.store/database) [:details :db]) connect d/db))
-
 (defn user-config []
   (try
     (-> (get-in (qp.store/database) [:details :config] "{}") read-string)
     (catch Exception e
       (log/error e "Datomic EDN is not configured correctly."))))
+
+(defn tx-filter []
+  (when-let [form (get (user-config) :tx-filter)]
+    (eval form)))
+
+(defn db []
+  (let [db (-> (get-in (qp.store/database) [:details :db]) connect d/db)]
+    (if-let [pred (tx-filter)]
+      (d/filter db pred)
+      db)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; SCHEMA
@@ -1127,7 +1134,21 @@
 
 (defn read-query [q]
   #_(binding [*data-readers* (assoc *data-readers* 'metabase-datomic/nil (fn [_] NIL))])
-  (read-string q))
+  (let [qry (read-string q)]
+    (if (vector? qry)
+      (loop [key (first qry)
+             val (take-while (complement keyword?) (next qry))
+             qry (drop (inc (count val)) qry)
+             res {key val}]
+        (if (seq qry)
+          (let [key (first qry)
+                val (take-while (complement keyword?) (next qry))
+                qry (drop (inc (count val)) qry)
+                res (assoc res key val)]
+            (recur key val qry res))
+          res))
+      qry)))
+
 
 (defn execute-query [{:keys [native query] :as native-query}]
   (let [db      (db)

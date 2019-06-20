@@ -754,6 +754,26 @@ Long/MIN_VALUE
 (map (comp d/touch (partial d/entity (db eeleven-url)) d/t->tx  :t) (d/tx-range (d/log (conn eeleven-url)) nil nil))
 {:db/id 13194139535416, :db/txInstant #inst "2019-04-17T11:46:55.577-00:00", :conformity/conformed-norms :elvn.db-migration/init-sample, :conformity/conformed-norms-index 1, :tx/tenant #:db{:id 17592186046521}}
 
-(user/refer-repl)
 
 (count (seq (d/seek-datoms (db eeleven-url) :eavt 13194139535416)))
+
+(d/q '[:find ?eid
+       :where [?eid :tenant/id]]
+     (d/filter
+
+      (db eeleven-url)
+
+      (fn [db ^datomic.Datom datom]
+        (let [tx-tenant (get-in (d/entity db (.tx datom)) [:tx/tenant :db/id])]
+          (or (nil? tx-tenant) (= 17592186046521 tx-tenant))))
+      ))
+;; => #{[17592186046521]}
+;; => #{[17592186046521] [17592186045660] [17592186046526]}
+
+
+
+datomic.Datom
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;
+(user/refer-repl)

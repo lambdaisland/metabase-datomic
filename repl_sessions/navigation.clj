@@ -4,7 +4,12 @@
 {:relationships {:journal-entry
                  {:account
                   {:path [:journal-entry/journal-entry-lines :journal-entry-line/account]
-                   :target :account}}}}
+                   :target :account}}}
+
+ :tx-filter
+ (fn [db ^datomic.Datom datom]
+   (let [tx-tenant (get-in (datomic.api/entity db (.tx datom)) [:tx/tenant :db/id])]
+     (or (nil? tx-tenant) (= 17592186046521 tx-tenant))))}
 
 
 
