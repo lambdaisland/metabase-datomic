@@ -6,7 +6,7 @@
 
 A Metabase driver for Datomic.
 
-For commercial support inquiries please get in touch at [arne@lambdaisland.com](mailto:arne@lambdaisland.com).
+Commercial support is provided by [Gaiwan](http://gaiwan.co).
 
 ## Design decisions
 
