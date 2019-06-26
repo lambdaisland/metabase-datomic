@@ -372,10 +372,12 @@
   Note that the caller takes care of removing the underscore from the attribute
   name and swapping the ?e and ?v."
   [?e a ?v]
-  (list 'or-join [?e ?v]
-        [?e a ?v]
-        (list 'and (list 'not ['_ a ?v])
-              [(list 'ground NIL-REF) ?e])))
+  (if *strict-bindings*
+    [?e a ?v]
+    (list 'or-join [?e ?v]
+          [?e a ?v]
+          (list 'and (list 'not ['_ a ?v])
+                [(list 'ground NIL-REF) ?e]))))
 
 (defn reverse-attr? [attr]
   (when (= \_ (first (name attr)))
@@ -388,18 +390,22 @@
 
   Will do a simple [e a v] binding when *strict-bindings* is true."
   [?e a ?v]
-  (if *strict-bindings*
-    [?e a ?v]
-    (if-let [a (reverse-attr? a)]
-      (bind-attr-reverse ?v a ?e)
-      (if (cardinality-many? a)
-        ;; get-else is not supported on cardinality/many
-        (list 'or-join [?e ?v]
-              [?e a ?v]
-              (list 'and
-                    [(list 'missing? '$ ?e a)]
-                    [(list 'ground NIL-REF) ?v]))
-        [(%get-else% '$ ?e a (NIL_VALUES (attr-type a) ::nil)) ?v]))))
+  (if-let [a (reverse-attr? a)]
+    (bind-attr-reverse ?v a ?e)
+    (cond
+      *strict-bindings*
+      [?e a ?v]
+
+      ;; get-else is not supported on cardinality/many
+      (cardinality-many? a)
+      (list 'or-join [?e ?v]
+            [?e a ?v]
+            (list 'and
+                  [(list 'missing? '$ ?e a)]
+                  [(list 'ground NIL-REF) ?v]))
+
+      :else
+      [(%get-else% '$ ?e a (NIL_VALUES (attr-type a) ::nil)) ?v])))
 
 (defn date-trunc-or-extract-some [unit date]
   (if (= NIL date)
@@ -484,10 +490,14 @@
     (let [src-field (field-inst src)
           src-name  (keyword (:name (qp.store/table (:table_id src-field))))
           rel-name  (keyword (:name src-field))
-          {:keys [path target]} (get-in (user-config) [:relationships src-name rel-name])]
+          {:keys [path target]} (get-in (user-config) [:relationships src-name rel-name])
+          attrib (->attrib dst)
+          path (if (= :db/id attrib)
+                 path
+                 (conj path attrib))]
       (path-bindings (table-lvar src)
                      (field-lvar field)
-                     (conj path (->attrib dst))))
+                     path))
     (if (= :db/id (->attrib field))
       [[(table-lvar src) (->attrib src) (table-lvar field)]]
       [(bind-attr (table-lvar src) (->attrib src) (field-lvar src))
