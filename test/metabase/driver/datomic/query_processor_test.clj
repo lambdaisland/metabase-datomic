@@ -30,7 +30,7 @@
                    ["FI" "Finnland"]
                    ["DE" "Germany"]]}
            (test-data/rows+cols
-            (data/with-db-for-dataset [db test-data/countries]
+            (data/with-temp-db [db test-data/countries]
               (qp/process-query
                 {:type :native
                  :database (:id db)

@@ -19,7 +19,7 @@
                        [17592186045419 "Germany" "DE"]]}}
 
               (with-datomic
-                (data/with-db-for-dataset [_ test-data/countries]
+                (data/with-temp-db [_ test-data/countries]
                   (qp/process-query
                     {:database (table->db "country")
                      :type     :query

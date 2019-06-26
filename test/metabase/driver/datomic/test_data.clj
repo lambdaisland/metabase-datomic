@@ -4,7 +4,7 @@
 (defn rows+cols [result]
   (select-keys (:data result) [:columns :rows]))
 
-(tx/defdataset aggr-data
+(tx/def-database-definition aggr-data
   [["foo"
     [{:field-name "f1" :base-type :type/Text}
      {:field-name "f2" :base-type :type/Text}]
@@ -12,7 +12,7 @@
      ["xxx" "b"]
      ["yyy" "c"]]]])
 
-(tx/defdataset countries
+(tx/def-database-definition countries
   [["country"
     [{:field-name "code" :base-type :type/Text}
      {:field-name "name" :base-type :type/Text}]
@@ -20,7 +20,7 @@
      ["DE" "Germany"]
      ["FI" "Finnland"]]]])
 
-(tx/defdataset with-nulls
+(tx/def-database-definition with-nulls
   [["country"
     [{:field-name "code" :base-type :type/Text}
      {:field-name "name" :base-type :type/Text}

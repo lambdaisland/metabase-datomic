@@ -58,7 +58,7 @@
                             [pos-int? "Germany" "DE"]
                             [pos-int? "Finnland" "FI"]])}
                 (test-data/rows+cols
-                 (data/with-db-for-dataset [_ test-data/countries]
+                 (data/with-temp-db [_ test-data/countries]
                    (data/run-mbql-query country)))))
 
     (is (match?

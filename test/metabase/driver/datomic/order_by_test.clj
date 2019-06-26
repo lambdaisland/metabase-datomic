@@ -30,7 +30,7 @@
                         [[pos-int? "Germany" "DE"]
                          [pos-int? "Finnland" "FI"]
                          [pos-int? "Belgium" "BE"]]}}
-                (data/with-db-for-dataset [_ test-data/countries]
+                (data/with-temp-db [_ test-data/countries]
                   (data/run-mbql-query country
                     {:order-by [[:desc $name]]}))))))
 

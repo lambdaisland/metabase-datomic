@@ -11,7 +11,7 @@
   (is (match? {:data {:columns ["f1" "count"],
                       :rows    [["xxx" 2] ["yyy" 1]]}}
               (with-datomic
-                (data/with-db-for-dataset [_ test-data/aggr-data]
+                (data/with-temp-db [_ test-data/aggr-data]
                   (data/run-mbql-query foo
                     {:aggregation [[:count]]
                      :breakout    [$f1]})))))
