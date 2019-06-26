@@ -771,9 +771,132 @@ Long/MIN_VALUE
 ;; => #{[17592186046521] [17592186045660] [17592186046526]}
 
 
+(println "{:in [$ %],\n :where\n [(or\n   [?release :release/artists]\n   [?release :release/artistCredit]\n   [?release :release/year]\n   [?release :release/name]\n   [?release :release/status]\n   [?release :release/language]\n   [?release :release/barcode]\n   [?release :release/month]\n   [?release :release/day]\n   [?release :release/gid]\n   [?release :release/media]\n   [?release :release/abstractRelease]\n   [?release :release/country]\n   [?release :release/packaging]\n[?release :release/labels]\n   [?release :release/script])\n  [(get-else $ ?release :release/year -9223372036854775808) ?release|release|year]\n  [(metabase.driver.datomic.util/lte 1968.8447095282804 ?release|release|year)]\n  [(metabase.driver.datomic.util/lte ?release|release|year 1971.1973666493718)]],\n :find [?release|release|year (count ?release)],\n :order-by [[:asc (metabase.driver.datomic.query-processor/field ?release|release|year {:database_type \"db.type/long\", :base_type :type/Integer, :special_type :type/Integer})]],\n :select [(metabase.driver.datomic.query-processor/field ?release|release|year {:database_type \"db.type/long\", :base_type :type/Integer, :special_type :type/Integer}) (count ?release)],\n :with ()}\n")
 
-datomic.Datom
+(d/q
+ '{:in [$]
+   :where
+   [(or
+     [?release :release/artists]
+     [?release :release/artistCredit]
+     [?release :release/year]
+     [?release :release/name]
+     [?release :release/status]
+     [?release :release/language]
+     [?release :release/barcode]
+     [?release :release/month]
+     [?release :release/day]
+     [?release :release/gid]
+     [?release :release/media]
+     [?release :release/abstractRelease]
+     [?release :release/country]
+     [?release :release/packaging]
+     [?release :release/labels]
+     [?release :release/script])
+    [(get-else $ ?release :release/year -9223372036854775808) ?release|release|year]
+    [(metabase.driver.datomic.util/lte 1968.8447095282804 ?release|release|year)]
+    [(metabase.driver.datomic.util/lte ?release|release|year 1971.1973666493718)]],
+   :find [?release|release|year (count ?release)],
+   :order-by [[:asc (metabase.driver.datomic.query-processor/field ?release|release|year {:database_type "db.type/long", :base_type :type/Integer, :special_type :type/Integer})]],
+   :select [(metabase.driver.datomic.query-processor/field ?release|release|year {:database_type "db.type/long", :base_type :type/Integer, :special_type :type/Integer}) (count ?release)],
+   :with ()}
+ (db))
 
+
+(d/q
+ '{
+   :where
+   [(or
+     [?bank-statement :bank-statement/account]
+     [?bank-statement :bank-statement/bank-statement-lines]
+     [?bank-statement :bank-statement/date]
+     [?bank-statement :bank-statement/document]
+     [?bank-statement :bank-statement/id])
+    [(get-else $ ?bank-statement :bank-statement/account -9223372036854775808) ?bank-statement|bank-statement|account]
+    (or-join
+     [?bank-statement ?bank-statement|bank-statement|bank-statement-lines]
+     [?bank-statement :bank-statement/bank-statement-lines ?bank-statement|bank-statement|bank-statement-lines]
+     (and [(missing? $ ?bank-statement :bank-statement/bank-statement-lines)] [(ground -9223372036854775808) ?bank-statement|bank-statement|bank-statement-lines]))
+    #_[?bank-statement|bank-statement|company :company/bank-statements ?bank-statement]
+
+    (or-join [?bank-statement|bank-statement|company ?bank-statement]
+             [?bank-statement|bank-statement|company :company/bank-statements ?bank-statement]
+             (and (not [_ :company/bank-statements ?bank-statement])
+                  [(ground -9223372036854775808) ?bank-statement|bank-statement|company]))
+
+    [(get-else $ ?bank-statement :bank-statement/date #inst "0001-01-01T01:01:01.000-00:00") ?bank-statement|bank-statement|date]
+    [(metabase.driver.datomic.query-processor/date-trunc-or-extract-some :default ?bank-statement|bank-statement|date) ?bank-statement|bank-statement|date|default]
+    [(get-else $ ?bank-statement :bank-statement/document -9223372036854775808) ?bank-statement|bank-statement|document]
+    [(get-else $ ?bank-statement :bank-statement/id ":metabase.driver.datomic.query-processor/nil") ?bank-statement|bank-statement|id]
+    [(get-else $ ?bank-statement|bank-statement|account :account/id ":metabase.driver.datomic.query-processor/nil") ?bank-statement|bank-statement|account->account|account|id]
+    [(get-else $ ?bank-statement|bank-statement|document :file/id ":metabase.driver.datomic.query-processor/nil") ?bank-statement|bank-statement|document->file|file|id]],
+   :find
+   [?bank-statement
+    ?bank-statement|bank-statement|company
+    ?bank-statement|bank-statement|date|default
+    ?bank-statement|bank-statement|document
+    ?bank-statement|bank-statement|id
+    ?bank-statement|bank-statement|account->account|account|id
+    ?bank-statement|bank-statement|document->file|file|id],
+   :select
+   [(metabase.driver.datomic.query-processor/field ?bank-statement {:database_type "db.type/ref", :base_type :type/PK, :special_type :type/PK})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|account {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|bank-statement-lines {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|company {:database_type "metabase.driver.datomic/path", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/datetime ?bank-statement|bank-statement|date :default)
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|document {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|id {:database_type "db.type/string", :base_type :type/Text, :special_type :type/Text})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|account->account|account|id {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|document->file|file|id {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})],
+   :order-by [[:asc (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|bank-statement-lines {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})]],
+   :with ()}
+ (db eeleven-url))
+
+(d/q
+ '{:where
+   [(or [?bank-statement :bank-statement/account]
+        [?bank-statement :bank-statement/bank-statement-lines]
+        [?bank-statement :bank-statement/date]
+        [?bank-statement :bank-statement/document]
+        [?bank-statement :bank-statement/id])
+    [(get-else $ ?bank-statement :bank-statement/account -9223372036854775808) ?bank-statement|bank-statement|account]
+    (or-join [?bank-statement ?bank-statement|bank-statement|bank-statement-lines]
+             [?bank-statement :bank-statement/bank-statement-lines ?bank-statement|bank-statement|bank-statement-lines]
+             (and [(missing? $ ?bank-statement :bank-statement/bank-statement-lines)] [(ground -9223372036854775808) ?bank-statement|bank-statement|bank-statement-lines]))
+    (or-join [?bank-statement|bank-statement|company ?bank-statement]
+             [?bank-statement|bank-statement|company :company/bank-statements ?bank-statement]
+             (and (not [_ :company/bank-statements ?bank-statement]) [(ground -9223372036854775808) ?bank-statement|bank-statement|company]))
+    [(get-else $ ?bank-statement :bank-statement/date #inst "0001-01-01T01:01:01.000-00:00") ?bank-statement|bank-statement|date]
+    [(metabase.driver.datomic.query-processor/date-trunc-or-extract-some :default ?bank-statement|bank-statement|date) ?bank-statement|bank-statement|date|default]
+    [(get-else $ ?bank-statement :bank-statement/document -9223372036854775808) ?bank-statement|bank-statement|document]
+    [(get-else $ ?bank-statement :bank-statement/id ":metabase.driver.datomic.query-processor/nil") ?bank-statement|bank-statement|id]
+    [(get-else $ ?bank-statement|bank-statement|account :account/id ":metabase.driver.datomic.query-processor/nil") ?bank-statement|bank-statement|account->account|account|id]
+    [(get-else $ ?bank-statement|bank-statement|document :file/id ":metabase.driver.datomic.query-processor/nil") ?bank-statement|bank-statement|document->file|file|id]
+    [(get-else $ ?bank-statement :bank-statement/company :metabase.driver.datomic.query-processor/nil) ?bank-statement|bank-statement|company]
+    [(get-else $ ?bank-statement|bank-statement|company :company/id ":metabase.driver.datomic.query-processor/nil") ?bank-statement|bank-statement|company->company|company|id]
+    [(ground "SG-01") ?bank-statement|bank-statement|company->company|company|id]],
+   :find
+   [?bank-statement
+    ?bank-statement|bank-statement|account
+    ?bank-statement|bank-statement|bank-statement-lines
+    ?bank-statement|bank-statement|company
+    ?bank-statement|bank-statement|date|default
+    ?bank-statement|bank-statement|document
+    ?bank-statement|bank-statement|id
+    ?bank-statement|bank-statement|account->account|account|id
+    ?bank-statement|bank-statement|document->file|file|id],
+   :select
+   [(metabase.driver.datomic.query-processor/field ?bank-statement {:database_type "db.type/ref", :base_type :type/PK, :special_type :type/PK})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|account {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|bank-statement-lines {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|company {:database_type "metabase.driver.datomic/path", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/datetime ?bank-statement|bank-statement|date :default)
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|document {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|id {:database_type "db.type/string", :base_type :type/Text, :special_type :type/Text})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|account->account|account|id {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})
+    (metabase.driver.datomic.query-processor/field ?bank-statement|bank-statement|document->file|file|id {:database_type "db.type/ref", :base_type :type/FK, :special_type :type/FK})],
+   }
+ (db eeleven-url))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 (user/refer-repl)
