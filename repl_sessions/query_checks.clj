@@ -898,5 +898,87 @@ Long/MIN_VALUE
    }
  (db eeleven-url))
 
+
+"{:in [$ %],\n :where\n [(or\n   [?journal-entry :journal-entry/base-rate]\n   [?journal-entry :journal-entry/currency]\n   [?journal-entry :journal-entry/date]\n   [?journal-entry :journal-entry/document-date]\n   [?journal-entry :journal-entry/document-number]\n   [?journal-entry :journal-entry/document-reference]\n   [?journal-entry :journal-entry/document-sequence]\n   [?journal-entry :journal-entry/document-type]\n   [?journal-entry :journal-entry/external-id]\n   [?journal-entry :journal-entry/id]\n   [?journal-entry :journal-entry/journal-entry-lines]\n   [?journal-entry :journal-entry/magic-document]\n   [?journal-entry :journal-entry/narration]\n   [?journal-entry :journal-entry/number]\n   [?journal-entry :journal-entry/reverse-of]\n   [?journal-entry :journal-entry/reversed-by]\n   [?journal-entry :journal-entry/state])\n  [?journal-entry :ledger/_journal-entries ?74472]\n  [?74472 :fiscal-year/_ledgers ?74473]\n  [?74473 :company/_fiscal-years ?74474]\n  [?74474 :db/id ?journal-entry|journal-entry|company]],\n :find [(count-distinct ?journal-entry|journal-entry|company)],\n :select [(count-distinct ?journal-entry|journal-entry|company)],\n :with ()}\n"
+"{:in [$ %],\n :where\n [(or\n   [?journal-entry :journal-entry/base-rate]\n   [?journal-entry :journal-entry/currency]\n   [?journal-entry :journal-entry/date]\n   [?journal-entry :journal-entry/document-date]\n   [?journal-entry :journal-entry/document-number]\n   [?journal-entry :journal-entry/document-reference]\n   [?journal-entry :journal-entry/document-sequence]\n   [?journal-entry :journal-entry/document-type]\n   [?journal-entry :journal-entry/external-id]\n   [?journal-entry :journal-entry/id]\n   [?journal-entry :journal-entry/journal-entry-lines]\n   [?journal-entry :journal-entry/magic-document]\n   [?journal-entry :journal-entry/narration]\n   [?journal-entry :journal-entry/number]\n   [?journal-entry :journal-entry/reverse-of]\n   [?journal-entry :journal-entry/reversed-by]\n   [?journal-entry :journal-entry/state])\n  (or-join [?155057 ?journal-entry] [?155057 :ledger/journal-entries ?journal-entry] (and (not [_ :ledger/journal-entries ?journal-entry]) [(ground -9223372036854775808) ?155057]))\n  (or-join [?155058 ?155057] [?155058 :fiscal-year/ledgers ?155057] (and (not [_ :fiscal-year/ledgers ?155057]) [(ground -9223372036854775808) ?155058]))\n  (or-join [?155059 ?155058] [?155059 :company/fiscal-years ?155058] (and (not [_ :company/fiscal-years ?155058]) [(ground -9223372036854775808) ?155059]))\n  [(get-else $ ?155059 :db/id :metabase.driver.datomic.query-processor/nil) ?journal-entry|journal-entry|company]\n  (or-join [?155060 ?journal-entry] [?155060 :ledger/journal-entries ?journal-entry] (and (not [_ :ledger/journal-entries ?journal-entry]) [(ground -9223372036854775808) ?155060]))\n  (or-join [?155061 ?155060] [?155061 :fiscal-year/ledgers ?155060] (and (not [_ :fiscal-year/ledgers ?155060]) [(ground -9223372036854775808) ?155061]))\n  (or-join [?155062 ?155061] [?155062 :company/fiscal-years ?155061] (and (not [_ :company/fiscal-years ?155061]) [(ground -9223372036854775808) ?155062]))\n  [(get-else $ ?155062 :db/id :metabase.driver.datomic.query-processor/nil) ?journal-entry|journal-entry|company]],\n :find [?journal-entry|journal-entry|company],\n :order-by [[:asc (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|company {:database_type \"metabase.driver.datomic/path\", :base_type :type/FK, :special_type :type/FK})]],\n :select [(metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|company {:database_type \"metabase.driver.datomic/path\", :base_type :type/FK, :special_type :type/FK})],\n :with ()}\n"
+
+{:where
+ [(or
+   [?journal-entry :journal-entry/base-rate]
+   [?journal-entry :journal-entry/currency]
+   [?journal-entry :journal-entry/date]
+   [?journal-entry :journal-entry/document-date]
+   [?journal-entry :journal-entry/document-number]
+   [?journal-entry :journal-entry/document-reference]
+   [?journal-entry :journal-entry/document-sequence]
+   [?journal-entry :journal-entry/document-type]
+   [?journal-entry :journal-entry/external-id]
+   [?journal-entry :journal-entry/id]
+   [?journal-entry :journal-entry/journal-entry-lines]
+   [?journal-entry :journal-entry/magic-document]
+   [?journal-entry :journal-entry/narration]
+   [?journal-entry :journal-entry/number]
+   [?journal-entry :journal-entry/reverse-of]
+   [?journal-entry :journal-entry/reversed-by]
+   [?journal-entry :journal-entry/state])
+  [?journal-entry :ledger/_journal-entries ?74472]
+  [?74472 :fiscal-year/_ledgers ?74473]
+  [?74473 :company/_fiscal-years ?74474]
+  [?74474 :db/id ?journal-entry|journal-entry|company]],
+ :find [(count-distinct ?journal-entry|journal-entry|company)],
+ :select [(count-distinct ?journal-entry|journal-entry|company)],
+ :with ()}
+
+
+{:in [$ %],
+ :where
+ [(or
+   [?journal-entry :journal-entry/base-rate]
+   [?journal-entry :journal-entry/currency]
+   [?journal-entry :journal-entry/date]
+   [?journal-entry :journal-entry/document-date]
+   [?journal-entry :journal-entry/document-number]
+   [?journal-entry :journal-entry/document-reference]
+   [?journal-entry :journal-entry/document-sequence]
+   [?journal-entry :journal-entry/document-type]
+   [?journal-entry :journal-entry/external-id]
+   [?journal-entry :journal-entry/id]
+   [?journal-entry :journal-entry/journal-entry-lines]
+   [?journal-entry :journal-entry/magic-document]
+   [?journal-entry :journal-entry/narration]
+   [?journal-entry :journal-entry/number]
+   [?journal-entry :journal-entry/reverse-of]
+   [?journal-entry :journal-entry/reversed-by]
+   [?journal-entry :journal-entry/state])
+  (or-join [?155057 ?journal-entry] [?155057 :ledger/journal-entries ?journal-entry] (and (not [_ :ledger/journal-entries ?journal-entry]) [(ground -9223372036854775808) ?155057]))
+  (or-join [?155058 ?155057] [?155058 :fiscal-year/ledgers ?155057] (and (not [_ :fiscal-year/ledgers ?155057]) [(ground -9223372036854775808) ?155058]))
+  (or-join [?155059 ?155058] [?155059 :company/fiscal-years ?155058] (and (not [_ :company/fiscal-years ?155058]) [(ground -9223372036854775808) ?155059]))
+  [(get-else $ ?155059 :db/id :metabase.driver.datomic.query-processor/nil) ?journal-entry|journal-entry|company]
+  (or-join [?155060 ?journal-entry] [?155060 :ledger/journal-entries ?journal-entry] (and (not [_ :ledger/journal-entries ?journal-entry]) [(ground -9223372036854775808) ?155060]))
+  (or-join [?155061 ?155060] [?155061 :fiscal-year/ledgers ?155060] (and (not [_ :fiscal-year/ledgers ?155060]) [(ground -9223372036854775808) ?155061]))
+  (or-join [?155062 ?155061] [?155062 :company/fiscal-years ?155061] (and (not [_ :company/fiscal-years ?155061]) [(ground -9223372036854775808) ?155062]))
+  [(get-else $ ?155062 :db/id :metabase.driver.datomic.query-processor/nil) ?journal-entry|journal-entry|company]],
+ :find [?journal-entry|journal-entry|company],
+ :order-by [[:asc (metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|company {:database_type "metabase.driver.datomic/path", :base_type :type/FK, :special_type :type/FK})]],
+ :select [(metabase.driver.datomic.query-processor/field ?journal-entry|journal-entry|company {:database_type "metabase.driver.datomic/path", :base_type :type/FK, :special_type :type/FK})],
+ :with ()}
+"{:in [$ %],\n :where\n [(or\n   [?bank-reconciliation :bank-reconciliation/bank-statement-lines]\n   [?bank-reconciliation :bank-reconciliation/date]\n   [?bank-reconciliation :bank-reconciliation/id]\n   [?bank-reconciliation :bank-reconciliation/journal-entry-lines])\n  [(get-else $ ?bank-reconciliation :bank-reconciliation/date #inst \"0001-01-01T01:01:01.000-00:00\") ?bank-reconciliation|bank-reconciliation|date]\n  [(metabase.driver.datomic.query-processor/date-trunc-or-extract-some :day ?bank-reconciliation|bank-reconciliation|date) ?bank-reconciliation|bank-reconciliation|date|day]],\n :find [?bank-reconciliation|bank-reconciliation|date|day (count ?bank-reconciliation)],\n :order-by [[:asc (metabase.driver.datomic.query-processor/datetime ?bank-reconciliation|bank-reconciliation|date :day)]],\n :select [(metabase.driver.datomic.query-processor/datetime ?bank-reconciliation|bank-reconciliation|date :day) (count ?bank-reconciliation)],\n :with ()}\n"
+
+(d/q
+ '{:where
+   [(or
+     [?bank-reconciliation :bank-reconciliation/bank-statement-lines]
+     [?bank-reconciliation :bank-reconciliation/date]
+     [?bank-reconciliation :bank-reconciliation/id]
+     [?bank-reconciliation :bank-reconciliation/journal-entry-lines])
+    [(get-else $ ?bank-reconciliation :bank-reconciliation/date #inst "0001-01-01T01:01:01.000-00:00") ?bank-reconciliation|bank-reconciliation|date]
+    [(metabase.driver.datomic.query-processor/date-trunc-or-extract-some :day ?bank-reconciliation|bank-reconciliation|date) ?bank-reconciliation|bank-reconciliation|date|day]],
+   :find [?bank-reconciliation|bank-reconciliation|date|day (count ?bank-reconciliation)],
+   :order-by [[:asc (metabase.driver.datomic.query-processor/datetime ?bank-reconciliation|bank-reconciliation|date :day)]],
+   :select [(metabase.driver.datomic.query-processor/datetime ?bank-reconciliation|bank-reconciliation|date :day) (count ?bank-reconciliation)]}
+ (db eeleven-url))
+
+{:inclusion-clauses {"company" [[?eid :company/id]]}}
+
 ;;;;;;;;;;;;;;;;;;;;;;;;
 (user/refer-repl)

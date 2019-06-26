@@ -8,7 +8,8 @@
             [metabase.models.table :refer [Table]]
             [metabase.query-processor.store :as qp.store]
             [toucan.db :as db]
-            [clojure.tools.logging :as log])
+            [clojure.tools.logging :as log]
+            [clojure.walk :as walk])
   (:import java.net.URI
            java.util.UUID))
 
@@ -793,6 +794,18 @@
       (dissoc :find :select))
     dqry))
 
+(defn source-table-clause [dqry {:keys [source-table breakout] :as mbqry}]
+  (let [table   (qp.store/table source-table)
+        eid     (table-lvar table)]
+    (if-let [custom-clause (get-in (user-config) [:inclusion-clauses (keyword (:name table))])]
+      (walk/postwalk-replace {'?eid eid} custom-clause)
+      (let [fields  (db/select Field :table_id source-table)
+            attribs (->> fields
+                         (remove (comp #{"metabase.driver.datomic/path"} :database_type))
+                         (map ->attrib)
+                         (remove (comp reserved-prefixes namespace)))]
+        [`(~'or ~@(map #(vector eid %) attribs))]))))
+
 (defn apply-source-table
   "Convert an MBQL :source-table clause into the corresponding Datalog. This
   generates a clause of the form
@@ -803,18 +816,9 @@
 
   In other words this binds the [[table-lvar]] to any entity that has any
   attributes corresponding with the given 'columns' of the given 'table'."
-  [dqry {:keys [source-table breakout] :as mbqry}]
+  [dqry {:keys [source-table] :as mbqry}]
   (if source-table
-    (let [table   (qp.store/table source-table)
-          eid     (table-lvar table)
-          fields  (db/select Field :table_id source-table)
-          attribs (->> fields
-                       (remove (comp #{"metabase.driver.datomic/path"} :database_type))
-                       (map ->attrib)
-                       (remove (comp reserved-prefixes namespace)))
-          clause  `(~'or ~@(map #(vector eid %) attribs))]
-      (-> dqry
-          (into-clause-uniq :where [clause])))
+    (into-clause-uniq dqry :where (source-table-clause dqry mbqry))
     dqry))
 
 ;; Entries in the :fields clause can be

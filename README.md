@@ -104,6 +104,115 @@ cd ../metabase
 lein run -m metabase.core
 ```
 
+## Configuration EDN
+
+When you configure a Datomic Database in Metabase you will notice a config field
+called "Configuration EDN". Here you can paste a snippet of EDN which will
+influence some of the Driver's behavior.
+
+The EDN needs to represent a Clojure map. These keys are currently understood
+
+- `:inclusion-clauses`
+- `:tx-filter`
+- `:relationships`
+
+Other keys are ignored.
+
+### `:inclusion-clauses`
+
+Datomic does not have tables, but nevertheless the driver will map your data to
+Metabase tables based on the attribute names in your schema. To limit results to
+the right entities it needs to do a check to see if a certain entity logically
+belongs to such a table.
+
+By default these look like this
+
+``` clojure
+[(or [?eid :user/name]
+     [?eid :user/password]
+     [?eid :user/roles])]
+```
+
+In other words we look for entities that have any attribute starting with the
+given prefix. This can be both suboptimal (there might be a single attribute
+with an index that is faster to check), and it may be wrong, depending on your
+setup.
+
+So we allow configuring this clause per table. The configured value should be a
+vector of datomic clauses. You have the full power of datalog available. Use the
+special symbol `?eid` for the entity that is being filtered.
+
+``` clojure
+{:inclusion-clauses {"user" [[?eid :user/handle]]}}
+```
+
+### `:tx-filter`
+
+The `datomic.api/filter` function allows you to get a filtered view of the
+database. A common use case is to select datoms based on metadata added to
+transaction entities.
+
+You can set `:tx-filter` to any form that evaluates to a Clojure function. Make
+sure any namespaces like `datomic.api` are fully qualified.
+
+``` clojure
+{:tx-filter
+ (fn [db ^datomic.Datom datom]
+   (let [tx-user (get-in (datomic.api/entity db (.tx datom)) [:tx/user :db/id])]
+     (or (nil? tx-tenant) (= 17592186046521 tx-user))))}
+```
+
+### `:rules`
+
+This allows you to configure Datomic rules. These then become available in the
+native query editor, as well in `:inclusion-clauses` and `:relationships`.
+
+``` clojure
+{:rules
+ [[(sub-accounts ?p ?c)
+   [?p :account/children ?c]]
+  [(sub-accounts ?p ?d)
+   [?p :account/children ?c]
+   (sub-accounts ?c ?d)]]}
+```
+
+### `:relationships`
+
+This features allows you to add "synthetic foreign keys" to tables. These are
+fields that Metabase will consider to be foreign keys, but in reality they are
+backed by an arbitrary lookup path in Datomic. This can include reverse
+reference (`:foo/_bar`) and rules.
+
+To set up an extra relationship you start from the table where you want to add
+the relationship, then give it a name, give the path of attributes and rules
+needed to get to the other entity, and specifiy which table the resulting entity
+belongs to.
+
+``` clojure
+{:relationships
+ {;; foreign keys added to the account table
+  :account
+  {:journal-entry-lines
+   {:path [:journal-entry-line/_account]
+    :target :journal-entry-line}
+
+   :subaccounts
+   {:path [sub-accounts]
+    :target :account}
+
+   :parent-accounts
+   {:path [_sub-accounts] ;; apply a rule in reverse
+    :target :account}}
+
+  ;; foreign keys added to the journal-entry-line table
+  :journal-entry-line
+  {:fiscal-year
+   {:path [:journal-entry/_journal-entry-lines
+           :ledger/_journal-entries
+           :fiscal-year/_ledgers]
+    :target :fiscal-year}}}}
+```
+
 ## Status
 
 <!-- feature-table -->
