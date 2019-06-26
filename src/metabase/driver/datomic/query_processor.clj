@@ -1189,7 +1189,9 @@
         ;; Hacking around this is as it's so common in Metabase's automatic
         ;; dashboards. Datomic never returns a count of zero, instead it just
         ;; returns an empty result.
-        results (if (and (empty? results) (= (:aggregation query) [[:count]]))
+        results (if (and (empty? results)
+                         (empty? (:breakout query))
+                         (= (:aggregation query) [[:count]]))
                   [[0]]
                   results)]
     (if query
