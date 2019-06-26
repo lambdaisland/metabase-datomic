@@ -29,7 +29,8 @@
   (let [dbinst (db/insert! Database
                  {:name "MusicBrainz"
                   :engine :datomic
-                  :details {:db "datomic:free://localhost:4334/mbrainz"}
+                  :details {:db "datomic:free://localhost:4334/mbrainz"
+                            :config "{}"}
                   :is_on_demand false
                   :is_full_sync true
                   :cache_field_values_schedule "0 50 0 * * ? *"

@@ -23,11 +23,16 @@
 (def connect #_(memoize d/connect)
   d/connect)
 
-(defn user-config []
-  (try
-    (-> (get-in (qp.store/database) [:details :config] "{}") read-string)
-    (catch Exception e
-      (log/error e "Datomic EDN is not configured correctly."))))
+(defn user-config
+  ([]
+   (user-config (qp.store/database)))
+  ([database]
+   (try
+     (let [edn (get-in database [:details :config])]
+       (read-string (or edn "{}")))
+     (catch Exception e
+       (log/error e "Datomic EDN is not configured correctly.")
+       {}))))
 
 (defn tx-filter []
   (when-let [form (get (user-config) :tx-filter)]

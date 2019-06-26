@@ -41,12 +41,6 @@
         {:name   table-name
          :schema nil}))}))
 
-(defn user-config [database]
-  (try
-    (read-string (get-in database [:details :config] "{}"))
-    (catch Exception e
-      (log/error e "Datomic EDN is not configured correctly."))))
-
 (derive :type/Keyword :type/Text)
 
 (def datomic->metabase-type
@@ -73,7 +67,7 @@
 
 (defn describe-table [database {table-name :name}]
   (let [url    (get-in database [:details :db])
-        config (user-config database)
+        config (datomic.qp/user-config database)
         db     (d/db (d/connect url))
         cols   (datomic.qp/table-columns db table-name)
         rels   (get-in config [:relationships (keyword table-name)])]
@@ -119,7 +113,7 @@
 (defn describe-table-fks [database {table-name :name}]
   (let [url    (get-in database [:details :db])
         db     (d/db (d/connect url))
-        config (user-config database)
+        config (datomic.qp/user-config database)
         tables (datomic.qp/derive-table-names db)
         cols   (datomic.qp/table-columns db table-name)
         rels   (get-in config [:relationships (keyword table-name)])]
