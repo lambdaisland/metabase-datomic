@@ -364,6 +364,23 @@
   `(binding [*strict-bindings* true]
      ~@body))
 
+(defn- bind-attr-reverse
+  "When dealing with reverse attributes (:foo/_bar) either missing? or get-else
+  don't work, and we need a different approach to get correct join semantics in
+  the presence of missing data.
+
+  Note that the caller takes care of removing the underscore from the attribute
+  name and swapping the ?e and ?v."
+  [?e a ?v]
+  (list 'or-join [?e ?v]
+        [?e a ?v]
+        (list 'and (list 'not ['_ a ?v])
+              [(list 'ground NIL-REF) ?e])))
+
+(defn reverse-attr? [attr]
+  (when (= \_ (first (name attr)))
+    (keyword (namespace attr) (subs (name attr) 1))))
+
 (defn bind-attr
   "Datalog EAV binding that unifies to NIL if the attribute is not present, the
   equivalent of an outer join, so we can look up attributes without filtering
@@ -373,14 +390,16 @@
   [?e a ?v]
   (if *strict-bindings*
     [?e a ?v]
-    (if (cardinality-many? a)
-      ;; get-else is not supported on cardinality/many
-      (list 'or-join [?e ?v]
-            [?e a ?v]
-            (list 'and
-                  [(list 'missing? '$ ?e a)]
-                  [(list 'ground NIL-REF) ?v]))
-      [(%get-else% '$ ?e a (NIL_VALUES (attr-type a) ::nil)) ?v])))
+    (if-let [a (reverse-attr? a)]
+      (bind-attr-reverse ?v a ?e)
+      (if (cardinality-many? a)
+        ;; get-else is not supported on cardinality/many
+        (list 'or-join [?e ?v]
+              [?e a ?v]
+              (list 'and
+                    [(list 'missing? '$ ?e a)]
+                    [(list 'ground NIL-REF) ?v]))
+        [(%get-else% '$ ?e a (NIL_VALUES (attr-type a) ::nil)) ?v]))))
 
 (defn date-trunc-or-extract-some [unit date]
   (if (= NIL date)
@@ -398,9 +417,7 @@
         (fn [?from ?to seg]
           (cond
             (keyword? seg)
-            (if (= \_ (first (name seg)))
-              (bind-attr ?to (keyword (namespace seg) (subs (name seg) 1)) ?from)
-              (bind-attr ?from seg ?to))
+            (bind-attr ?from seg ?to)
 
             (symbol? seg)
             (if (= \_ (first (name seg)))
@@ -504,8 +521,8 @@
       (if (keyword? value)
         [[?eid :db/ident value]]
         [[(list '= ?eid value)]])
-      [(bind-attr ?eid attr ?val)
-       [(list 'ground value) ?val]])))
+      (conj (field-bindings field-ref)
+            [(list 'ground value) ?val]))))
 
 (defmethod constant-binding :field-literal [field-name value]
   [[(list 'ground value) (field-lvar field-name)]])
@@ -527,9 +544,9 @@
           [[?src src-attr ?ident]
            [?ident :db/ident value]])
         [[?src src-attr value]])
-      [(bind-attr ?src src-attr ?dst)
-       (bind-attr ?dst dst-attr ?val)
-       [(list 'ground value) ?val]])))
+      (conj (field-bindings src)
+            (bind-attr ?dst dst-attr ?val)
+            [(list 'ground value) ?val]))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
