@@ -8,9 +8,14 @@
      (require '~(symbol (namespace sym)))
      (find-var '~sym)))
 
+(defn plugin-yaml-path []
+  (some #(when (.exists %) %)
+        [(io/file "resources/metabase-plugin.yaml")
+         (io/file "../metabase-datomic/resources/metabase-plugin.yaml")
+         (io/file "metabase-datomic/resource/metabase-plugin.yaml")]))
+
 (defn setup-driver! []
-  (-> (io/resource "metabase-plugin.yaml")
-      io/file
+  (-> (plugin-yaml-path)
       ((jit yaml.core/from-file))
       ((jit metabase.plugins.initialize/init-plugin-with-info!))))
 

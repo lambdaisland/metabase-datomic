@@ -343,7 +343,6 @@ Architecture Decisions]] by Michael Nygard.
    Query generating code needs to pay attention to use the necessary helper
    functions to set up lvar bindings, so these semantics are preserved.
 
-
 * 008: Use type-specific ~nil~ placeholders
 
   Status: ACCEPTED

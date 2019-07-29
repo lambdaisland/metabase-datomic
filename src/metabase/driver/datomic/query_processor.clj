@@ -434,7 +434,7 @@
            binding    []
            ?from      ?from]
       (if (seq path)
-        (let [?next-from (gensym "?")]
+        (let [?next-from (lvar ?from (namespace p) (name p))]
           (recur path
                  (conj binding (segment-binding ?from ?next-from p))
                  ?next-from))
@@ -449,6 +449,15 @@
       :database_type
       (= "metabase.driver.datomic/path")))
 
+(defn computed-field?
+  "Is tis field reference a custom relationship, i.e. configured via the admin UI
+  and backed by a custom path traversal."
+  [field-ref]
+  (-> field-ref
+      field-inst
+      :database_type
+      (= "metabase.driver.datomic/computed-field")))
+
 ;;=> [:field-id 45] ;;=> [[?artist :artist/name ?artist|artist|name]]
 (defmulti field-bindings
   "Given a field reference, return the necessary Datalog bindings (as used
@@ -460,14 +469,24 @@
   mbql.u/dispatch-by-clause-name-or-class)
 
 (defmethod field-bindings :field-id [field-ref]
-  (if (custom-relationship? field-ref)
-    (let [src-field (field-inst field-ref)
-          src-name  (keyword (:name (qp.store/table (:table_id src-field))))
-          rel-name  (keyword (:name src-field))
+  (cond
+    (custom-relationship? field-ref)
+    (let [src-field             (field-inst field-ref)
+          src-name              (keyword (:name (qp.store/table (:table_id src-field))))
+          rel-name              (keyword (:name src-field))
           {:keys [path target]} (get-in (user-config) [:relationships src-name rel-name])]
       (path-bindings (table-lvar field-ref)
                      (field-lvar field-ref)
                      path))
+
+    (computed-field? field-ref)
+    (let [field          (field-inst field-ref)
+          table-name     (keyword (:name (qp.store/table (:table_id field))))
+          field-name     (keyword (:name field))
+          {:keys [rule]} (get-in (user-config) [:fields table-name field-name])]
+      [(list rule (table-lvar field-ref) (field-lvar field-ref))])
+
+    :else
     (let [attr (->attrib field-ref)]
       (when-not (= :db/id attr)
         [(bind-attr (table-lvar field-ref) attr (field-lvar field-ref))]))))
@@ -487,22 +506,34 @@
     []))
 
 (defmethod field-bindings :fk-> [[_ src dst :as field]]
-  (if (custom-relationship? src)
-    (let [src-field (field-inst src)
-          src-name  (keyword (:name (qp.store/table (:table_id src-field))))
-          rel-name  (keyword (:name src-field))
+  (cond
+    (custom-relationship? src)
+    (let [src-field             (field-inst src)
+          src-name              (keyword (:name (qp.store/table (:table_id src-field))))
+          rel-name              (keyword (:name src-field))
           {:keys [path target]} (get-in (user-config) [:relationships src-name rel-name])
-          attrib (->attrib dst)
-          path (if (= :db/id attrib)
-                 path
-                 (conj path attrib))]
+          attrib                (->attrib dst)
+          path                  (if (= :db/id attrib)
+                                  path
+                                  (conj path attrib))]
       (path-bindings (table-lvar src)
                      (field-lvar field)
                      path))
-    (if (= :db/id (->attrib field))
-      [[(table-lvar src) (->attrib src) (table-lvar field)]]
+
+    (computed-field? dst)
+    (let [dst-field      (field-inst dst)
+          table-name     (keyword (:name (qp.store/table (:table_id dst-field))))
+          field-name     (keyword (:name dst-field))
+          {:keys [rule]} (get-in (user-config) [:fields table-name field-name])]
       [(bind-attr (table-lvar src) (->attrib src) (field-lvar src))
-       (bind-attr (field-lvar src) (->attrib field) (field-lvar field))])))
+       (list rule (field-lvar src) (field-lvar field))])
+
+    (= :db/id (->attrib field))
+    [[(table-lvar src) (->attrib src) (table-lvar field)]]
+
+    :else
+    [(bind-attr (table-lvar src) (->attrib src) (field-lvar src))
+     (bind-attr (field-lvar src) (->attrib field) (field-lvar field))]))
 
 (defmethod field-bindings :aggregation [_]
   [])
@@ -801,7 +832,7 @@
       (walk/postwalk-replace {'?eid eid} custom-clause)
       (let [fields  (db/select Field :table_id source-table)
             attribs (->> fields
-                         (remove (comp #{"metabase.driver.datomic/path"} :database_type))
+                         (remove (comp #{"metabase.driver.datomic/path" "metabase.driver.datomic/computed-field"} :database_type))
                          (map ->attrib)
                          (remove (comp reserved-prefixes namespace)))]
         [`(~'or ~@(map #(vector eid %) attribs))]))))
@@ -1005,8 +1036,14 @@
   (let [row->field (select-field dqry entity-fn field)]
     (fn [row]
       (let [value (row->field row)]
-        (if (and (= "db.type/ref" database_type) (integer? value))
+        (cond
+          (and (= "db.type/ref" database_type) (integer? value))
           (:db/ident (entity-fn value) value)
+
+          (and (= "metabase.driver.datomic/path" database_type) (integer? value))
+          (:db/ident (entity-fn value) value)
+
+          :else
           value)))))
 
 (defn select-field
@@ -1195,7 +1232,7 @@
         ;; returns an empty result.
         results (if (and (empty? results)
                          (empty? (:breakout query))
-                         (= (:aggregation query) [[:count]]))
+                         (#{[[:count]] [[:sum]]} (:aggregation query)))
                   [[0]]
                   results)]
     (if query

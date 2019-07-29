@@ -25,17 +25,20 @@
   (public-settings/anon-tracking-enabled false)
   (setup/clear-token!))
 
-(defn setup-database []
-  (let [dbinst (db/insert! Database
-                 {:name "MusicBrainz"
-                  :engine :datomic
-                  :details {:db "datomic:free://localhost:4334/mbrainz"
-                            :config "{}"}
-                  :is_on_demand false
-                  :is_full_sync true
-                  :cache_field_values_schedule "0 50 0 * * ? *"
-                  :metadata_sync_schedule "0 50 * * * ? *"})]
-    (sync/sync-database! dbinst)))
+(defn setup-database
+  ([]
+   (setup-database "MusicBrainz" "datomic:free://localhost:4334/mbrainz" {}))
+  ([name url config]
+   (let [dbinst (db/insert! Database
+                  {:name name
+                   :engine :datomic
+                   :details {:db url
+                             :config (pr-str config)}
+                   :is_on_demand false
+                   :is_full_sync true
+                   :cache_field_values_schedule "0 50 0 * * ? *"
+                   :metadata_sync_schedule "0 50 * * * ? *"})]
+     (sync/sync-database! dbinst))))
 
 (defn remove-database
   ([]

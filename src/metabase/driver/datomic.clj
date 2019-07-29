@@ -66,11 +66,12 @@
     (util/kw->str col)))
 
 (defn describe-table [database {table-name :name}]
-  (let [url    (get-in database [:details :db])
-        config (datomic.qp/user-config database)
-        db     (d/db (d/connect url))
-        cols   (datomic.qp/table-columns db table-name)
-        rels   (get-in config [:relationships (keyword table-name)])]
+  (let [url         (get-in database [:details :db])
+        config      (datomic.qp/user-config database)
+        db          (d/db (d/connect url))
+        cols        (datomic.qp/table-columns db table-name)
+        rels        (get-in config [:relationships (keyword table-name)])
+        xtra-fields (get-in config [:fields (keyword table-name)])]
     {:name   table-name
      :schema nil
 
@@ -85,11 +86,16 @@
                   :database-type (util/kw->str type)
                   :base-type     (datomic->metabase-type type)
                   :special-type  (datomic->metabase-type type)}))
-         (into (for [[rel-name {:keys [path target]}] rels]
+         (into (for [[rel-name {:keys [_path target]}] rels]
                  {:name          (name rel-name)
                   :database-type "metabase.driver.datomic/path"
                   :base-type     :type/FK
-                  :special-type  :type/FK})))}))
+                  :special-type  :type/FK}))
+         (into (for [[fname {:keys [type _rule]}] xtra-fields]
+                 {:name          (name fname)
+                  :database-type "metabase.driver.datomic/computed-field"
+                  :base-type     type
+                  :special-type  type})))}))
 
 (defmethod driver/describe-table :datomic [_ database table]
   (describe-table database table))
