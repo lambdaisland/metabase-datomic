@@ -1,5 +1,7 @@
 {:paths ["../metabase-datomic/src"
-         "../metabase-datomic/resources"]
+         "../metabase-datomic/resources"
+         "src"
+         "resources"]
  :deps  {}
 
  :aliases
