@@ -4,6 +4,9 @@
          "resources"]
  :deps  {}
 
+ :mvn/repos
+ {"my.datomic.com" {:url "https://my.datomic.com/repo"}}
+
  :aliases
  {:metabase
   {:extra-deps {org.clojure/clojure {:mvn/version "1.10.0"}
@@ -31,9 +34,7 @@
                                          :exclusions  [org.slf4j/jcl-over-slf4j
                                                        org.slf4j/jul-to-slf4j
                                                        org.slf4j/log4j-over-slf4j
-                                                       org.slf4j/slf4j-nop]}}
-   :mvn/repos
-   {"my.datomic.com" {:url "https://my.datomic.com/repo"}}}
+                                                       org.slf4j/slf4j-nop]}}}
 
   :test
   {:extra-paths ["../metabase/src"
