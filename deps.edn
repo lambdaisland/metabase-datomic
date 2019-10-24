@@ -23,14 +23,14 @@
                  vvvvalvalval/scope-capture {:mvn/version "0.3.2"}}}
 
   :datomic-free
-  {:extra-deps {com.datomic/datomic-free {:mvn/version "0.9.5697"
+  {:extra-deps {com.datomic/datomic-free {:mvn/version "0.9.5703.21"
                                           :exclusions  [org.slf4j/jcl-over-slf4j
                                                         org.slf4j/jul-to-slf4j
                                                         org.slf4j/log4j-over-slf4j
                                                         org.slf4j/slf4j-nop]}}}
 
   :datomic-pro
-  {:extra-deps {com.datomic/datomic-pro {:mvn/version "0.9.5561.62"
+  {:extra-deps {com.datomic/datomic-pro {:mvn/version "0.9.5927"
                                          :exclusions  [org.slf4j/jcl-over-slf4j
                                                        org.slf4j/jul-to-slf4j
                                                        org.slf4j/log4j-over-slf4j
