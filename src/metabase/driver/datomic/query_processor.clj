@@ -60,7 +60,8 @@
   "Query db for all attribute entities."
   [db]
   (->> db
-       (d/q '{:find [[?eid ...]] :where [[?eid :db/valueType]]})
+       (d/q '{:find [[?eid ...]] :where [[?eid :db/valueType]
+                                         [?eid :db/ident]]})
        (map (partial d/entity db))))
 
 (defn attrs-by-table

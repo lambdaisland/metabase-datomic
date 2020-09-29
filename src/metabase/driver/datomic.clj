@@ -57,7 +57,10 @@
    :db.type/uuid    :type/UUID       ;; Value type for UUIDs. Maps to java.util.UUID on Java platforms.
    :db.type/uri     :type/URL        ;; Value type for URIs. Maps to java.net.URI on Java platforms.
    :db.type/bytes   :type/Array      ;; Value type for small binary data. Maps to byte array on Java platforms. See limitations.
-   })
+   :db.type/tuple   :type/Array
+
+   :db.type/symbol  :type/Keyword
+   #_:db.type/fn})
 
 (defn column-name [table-name col]
   (if (= (namespace col)

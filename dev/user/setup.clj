@@ -12,7 +12,7 @@
 
 (defn setup-first-user []
   (let [new-user (db/insert! User
-                   :email        "arne@example.com"
+                   :email        "admin@example.com"
                    :first_name   "dev"
                    :last_name    "dev"
                    :password     (str (java.util.UUID/randomUUID))
