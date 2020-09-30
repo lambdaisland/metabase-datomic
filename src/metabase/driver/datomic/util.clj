@@ -23,6 +23,16 @@
   (gte [x y]))
 
 (extend-protocol Comparisons
+  java.util.UUID
+  (lt [x y]
+      (and (instance? java.util.UUID y) (< (.compareTo x y) 0)))
+  (gt [x y]
+      (and (instance? java.util.UUID y) (> (.compareTo x y) 0)))
+  (lte [x y]
+       (and (instance? java.util.UUID y) (<= (.compareTo x y) 0)))
+  (gte [x y]     
+       (and (instance? java.util.UUID y) (>= (.compareTo x y) 0)))
+  
   java.lang.Number
   (lt [x y]
     (and (number? y) (< x y)))
@@ -61,7 +71,7 @@
   (lte [x y]
     (and (string? y) (<= (.compareTo x y) 0)))
   (gte [x y]
-    (and (string? y) (<= (.compareTo x y) 0)))
+    (and (string? y) (>= (.compareTo x y) 0)))
 
   clojure.lang.Keyword
   (lt [x y]
@@ -71,7 +81,7 @@
   (lte [x y]
     (and (keyword? y) (<= (.compareTo (name x) (name y)) 0)))
   (gte [x y]
-    (and (keyword? y) (<= (.compareTo (name x) (name y)) 0))))
+    (and (keyword? y) (>= (.compareTo (name x) (name y)) 0))))
 
 (defn str-starts-with? [s prefix {case? :case-sensitive}]
   (if case?
