@@ -356,9 +356,9 @@
    :db.type/float   Long/MIN_VALUE
    :db.type/long    Long/MIN_VALUE
    :db.type/ref     Long/MIN_VALUE
-   :db.type/instant #inst "0001-01-01T01:01:01"
+   :db.type/instant #inst "0001-01-01T00:00:00"
    :db.type/uri     (URI. (str "nil" ::nil))
-   :db.type/uuid    (UUID/randomUUID)})
+   :db.type/uuid    #uuid "00000000-0000-0000-0000-000000000000"})
 
 (def ^:dynamic *strict-bindings* false)
 
@@ -664,6 +664,11 @@
       "db.type/uri"
       (if (string? v)
         (java.net.URI. v)
+        v)
+
+      "db.type/uuid"
+      (if (string? v)
+        (UUID/fromString v)
         v)
 
       v)))

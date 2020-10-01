@@ -30,9 +30,9 @@
       (and (instance? java.util.UUID y) (> (.compareTo x y) 0)))
   (lte [x y]
        (and (instance? java.util.UUID y) (<= (.compareTo x y) 0)))
-  (gte [x y]     
+  (gte [x y]
        (and (instance? java.util.UUID y) (>= (.compareTo x y) 0)))
-  
+
   java.lang.Number
   (lt [x y]
     (and (number? y) (< x y)))
